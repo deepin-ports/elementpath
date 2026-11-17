@@ -1,9 +1,12 @@
+elementpath (5.1.3-1deepin2) unstable; urgency=medium
+
+  * Restore python3-xmlschema test dependency.
+
+ -- purofle <purofle@gmail.com>  Tue, 17 Nov 2026 22:21:08 +0800
+
 elementpath (5.1.3-1deepin1) unstable; urgency=medium
 
-  * Bootstrap for Python 3.14: drop the python3-xmlschema <!nocheck>
-    build-dependency (xmlschema >= 4 build-depends on elementpath >= 5,
-    and OBS does not apply the nocheck profile). Restore once xmlschema
-    is rebuilt.
+  * Drop python3-xmlschema test dependency to bootstrap xmlschema.
 
  -- purofle <purofle@gmail.com>  Tue, 17 Nov 2026 20:11:56 +0800
 

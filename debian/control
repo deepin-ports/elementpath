@@ -13,6 +13,7 @@ Build-Depends:
  python3-all,
  python3-lxml <!nocheck>,
  python3-setuptools,
+ python3-xmlschema (>= 2.0.0) <!nocheck>,
 Standards-Version: 4.7.4
 Homepage: https://github.com/sissaschool/elementpath
 Vcs-Browser: https://salsa.debian.org/python-team/packages/elementpath
