@@ -1,5 +1,5 @@
 #
-# Copyright (c), 2018-2020, SISSA (International School for Advanced Studies).
+# Copyright (c), 2018-2026, SISSA (International School for Advanced Studies).
 # All rights reserved.
 # This file is distributed under the terms of the MIT License.
 # See the file 'LICENSE' in the root directory of the present
@@ -11,11 +11,12 @@ import calendar
 import datetime
 import decimal
 import re
-from typing import Iterator, List, Optional, Tuple, Union
+from collections.abc import Iterator
+from typing import Any, Optional, Union
 from unicodedata import category
 
-from ..exceptions import xpath_error
-from ..regex import translate_pattern
+from elementpath.exceptions import xpath_error
+from elementpath.regex import translate_pattern
 
 from ._translation_maps import ALPHABET_CHARACTERS, OTHER_NUMBERS, ROMAN_NUMERALS_MAP, \
     NUM_TO_MONTH_MAPS, NUM_TO_WEEKDAY_MAPS, NUM_TO_WORD_MAPS, MILITARY_TIME_ZONES
@@ -34,6 +35,7 @@ def decimal_to_string(value: decimal.Decimal) -> str:
     Convert a Decimal value to a string representation
     that not includes exponent and with its decimals.
     """
+    exponent: Any
     sign, digits, exponent = value.as_tuple()
 
     if not exponent:
@@ -189,9 +191,11 @@ def format_digits(digits: str,
         else:
             separator = _separator.pop()
             chunks = fmt.split(separator)
-            repeat = len(chunks[-1])
-            if all(len(item) == repeat for item in chunks[1:-1]):
-                repeat += 1
+
+            if len(chunks[0]) > len(chunks[-1]):
+                repeat = None
+            elif all(len(item) == len(chunks[-1]) for item in chunks[1:-1]):
+                repeat = len(chunks[-1]) + 1
             else:
                 repeat = None
 
@@ -249,7 +253,7 @@ def to_ordinal_en(num_as_words: str) -> str:
         return num_as_words + 'th'
 
 
-def to_ordinal_it(num_as_words: str, fmt_modifier: str) -> str:
+def to_ordinal_it(num_as_words: str, fmt_modifier: str = '') -> str:
     if '%spellout-ordinal-feminine' in fmt_modifier:
         suffix = 'a'
     elif fmt_modifier.startswith('o(-'):
@@ -274,7 +278,7 @@ def to_ordinal_it(num_as_words: str, fmt_modifier: str) -> str:
     try:
         value = ordinal_map[num_as_words]
     except KeyError:
-        if num_as_words[-1] in 'eo':
+        if num_as_words[-1] in 'eo' or num_as_words[-2:] == 'ci':
             value = num_as_words[:-1] + 'esimo'
         else:
             value = num_as_words + 'esimo'
@@ -308,6 +312,8 @@ def int_to_words(num: int, lang: Optional[str] = None, fmt_modifier: str = '') -
                 elif base == 100:
                     if lang == 'en':
                         yield ' and '
+                elif lang == 'en' and value < 100:
+                    yield ' and '
                 else:
                     yield ' '
 
@@ -333,7 +339,7 @@ def int_to_words(num: int, lang: Optional[str] = None, fmt_modifier: str = '') -
         return result
 
 
-def parse_datetime_picture(picture: str) -> Tuple[List[str], List[str]]:
+def parse_datetime_picture(picture: str) -> tuple[list[str], list[str]]:
     """
     Analyze a picture argument of XPath 3.0+ formatting functions.
 
@@ -681,7 +687,7 @@ def parse_datetime_marker(marker: str, dt: datetime.datetime, lang: Optional[str
     return sign + fmt_chunk
 
 
-def parse_width(width: str) -> Tuple[int, Optional[int]]:
+def parse_width(width: str) -> tuple[int, Optional[int]]:
     min_width: Union[str, int]
     max_width: Union[str, int, None]
 

@@ -1,3 +1,86 @@
+elementpath (5.1.3-1) unstable; urgency=medium
+
+  * New upstream version 5.1.3
+  * Bump Standards-Version to 4.7.4
+  * Migrate to debhelper 14
+
+ -- Timo Röhling <roehling@debian.org>  Tue, 30 Jun 2026 11:58:26 +0200
+
+elementpath (5.1.1-1) unstable; urgency=medium
+
+  * New upstream version 5.1.1
+  * Refresh patch (no functional changes)
+  * Update copyright years
+
+ -- Timo Röhling <roehling@debian.org>  Sat, 24 Jan 2026 23:17:12 +0100
+
+elementpath (5.1.0-1) unstable; urgency=medium
+
+  * New upstream version 5.1.0
+  * Refresh patch (no functional changes)
+  * Bump Standards-Version to 4.7.3
+
+ -- Timo Röhling <roehling@debian.org>  Fri, 02 Jan 2026 23:35:23 +0100
+
+elementpath (5.0.4-2) unstable; urgency=medium
+
+  * Team upload.
+  * Declare breaking python3-xmlschema before version 4.0
+  * Drop obsolete Rules-Requires-Root: no
+  * Update debian/watch to version 5
+
+ -- Benjamin Drung <bdrung@debian.org>  Thu, 13 Nov 2025 12:08:57 +0100
+
+elementpath (5.0.4-1) unstable; urgency=medium
+
+  * New upstream version 5.0.4
+  * Refresh patches (no functional changes)
+  * Migrate to PEP 517 build
+
+ -- Timo Röhling <roehling@debian.org>  Tue, 19 Aug 2025 10:20:06 +0200
+
+elementpath (4.8.0-1) unstable; urgency=medium
+
+  * New upstream version 4.8.0
+  * Bump Standards-Version to 4.7.2
+
+ -- Timo Röhling <roehling@debian.org>  Thu, 13 Mar 2025 12:20:20 +0100
+
+elementpath (4.7.0-1) unstable; urgency=medium
+
+  * New upstream version 4.7.0
+  * Wrap and sort Debian package files
+
+ -- Timo Röhling <roehling@debian.org>  Mon, 23 Dec 2024 01:00:53 +0100
+
+elementpath (4.6.0-1) unstable; urgency=medium
+
+  * Update d/watch to latest GitHub recipe
+  * New upstream version 4.6.0
+
+ -- Timo Röhling <roehling@debian.org>  Sun, 03 Nov 2024 00:20:12 +0100
+
+elementpath (4.5.0-1) unstable; urgency=medium
+
+  * New upstream version 4.5.0
+
+ -- Timo Röhling <roehling@debian.org>  Thu, 12 Sep 2024 15:15:40 +0200
+
+elementpath (4.4.0-1) unstable; urgency=medium
+
+  * New upstream version 4.4.0
+    (Closes: #1069770)
+  * Transfer maintenance to Debian Python Team.
+    Thanks to SZ Lin for their work
+  * Reformat d/control
+  * Bump Standards-Version to 4.7.0
+  * Test against python3-xmlschema
+  * Migrate to autopkgtest-pkg-pybuild
+  * Update d/copyright
+  * Point Vcs-* URLs at Python Team namespace
+
+ -- Timo Röhling <roehling@debian.org>  Wed, 24 Apr 2024 22:15:09 +0200
+
 elementpath (3.0.2-1) unstable; urgency=medium
 
   * Import new upstream release

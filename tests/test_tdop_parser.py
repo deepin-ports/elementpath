@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c), 2018-2020, SISSA (International School for Advanced Studies).
+# Copyright (c), 2018-2026, SISSA (International School for Advanced Studies).
 # All rights reserved.
 # This file is distributed under the terms of the MIT License.
 # See the file 'LICENSE' in the root directory of the present
@@ -13,7 +13,7 @@ import re
 import sys
 from collections import namedtuple
 
-from elementpath.tdop import _symbol_to_classname, ParseError, Token, \
+from elementpath.tdop import symbol_to_classname, ParseError, Token, \
     ParserMeta, Parser, MultiLabel
 
 
@@ -22,8 +22,6 @@ class TdopParserTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         class ExpressionParser(Parser):
-            SYMBOLS = {'(integer)', '+', '-', '(name)', '(end)', '(invalid)', '(unknown)'}
-
             @classmethod
             def create_tokenizer(cls, symbol_table):
                 return re.compile(
@@ -32,10 +30,7 @@ class TdopParserTest(unittest.TestCase):
                 )
 
         ExpressionParser.literal('(integer)')
-        ExpressionParser.register('(name)', bp=100, lbp=100)
-        ExpressionParser.register('(end)')
-        ExpressionParser.register('(invalid)')
-        ExpressionParser.register('(unknown)')
+        ExpressionParser.register('(name)')
 
         @ExpressionParser.method(ExpressionParser.infix('+', bp=40))
         def evaluate_plus(self, context=None):
@@ -73,21 +68,21 @@ class TdopParserTest(unittest.TestCase):
         self.assertFalse(label.endswith('constructor'))
 
     def test_symbol_to_classname_function(self):
-        self.assertEqual(_symbol_to_classname('_cat10'), 'Cat10')
-        self.assertEqual(_symbol_to_classname('&'), 'Ampersand')
-        self.assertEqual(_symbol_to_classname('('), 'LeftParenthesis')
-        self.assertEqual(_symbol_to_classname(')'), 'RightParenthesis')
+        self.assertEqual(symbol_to_classname('_cat10'), 'Cat10')
+        self.assertEqual(symbol_to_classname('&'), 'Ampersand')
+        self.assertEqual(symbol_to_classname('('), 'LeftParenthesis')
+        self.assertEqual(symbol_to_classname(')'), 'RightParenthesis')
 
-        self.assertEqual(_symbol_to_classname('(name)'), 'Name')
-        self.assertEqual(_symbol_to_classname('(name'), 'LeftParenthesisname')
+        self.assertEqual(symbol_to_classname('(name)'), 'Name')
+        self.assertEqual(symbol_to_classname('(name'), 'LeftParenthesisname')
 
-        self.assertEqual(_symbol_to_classname('-'), 'HyphenMinus')
-        self.assertEqual(_symbol_to_classname('_'), 'LowLine')
-        self.assertEqual(_symbol_to_classname('-_'), 'HyphenMinusLowLine')
-        self.assertEqual(_symbol_to_classname('--'), 'HyphenMinusHyphenMinus')
+        self.assertEqual(symbol_to_classname('-'), 'HyphenMinus')
+        self.assertEqual(symbol_to_classname('_'), 'LowLine')
+        self.assertEqual(symbol_to_classname('-_'), 'HyphenMinusLowLine')
+        self.assertEqual(symbol_to_classname('--'), 'HyphenMinusHyphenMinus')
 
-        self.assertEqual(_symbol_to_classname('my-api-call'), 'MyApiCall')
-        self.assertEqual(_symbol_to_classname('call-'), 'Call')
+        self.assertEqual(symbol_to_classname('my-api-call'), 'MyApiCall')
+        self.assertEqual(symbol_to_classname('call-'), 'Call')
 
     def test_create_tokenizer_method(self):
         FakeToken = namedtuple('Token', 'symbol pattern label')
@@ -121,23 +116,50 @@ class TdopParserTest(unittest.TestCase):
             self.assertIn(r"(\{http\:\/\/www\.w3\.org\/2000\/09\/xmldsig\#\}", pattern.pattern)
 
     def test_tokenizer_items(self):
-        self.assertListEqual(self.parser.tokenizer.findall('5 56'),
-                             [('5', '', '', ''), ('', '', '', ''), ('56', '', '', '')])
-        self.assertListEqual(self.parser.tokenizer.findall('5+56'),
-                             [('5', '', '', ''), ('', '+', '', ''), ('56', '', '', '')])
-        self.assertListEqual(self.parser.tokenizer.findall('xy'),
-                             [('', '', 'xy', '')])
-        self.assertListEqual(self.parser.tokenizer.findall('5x'),
-                             [('5', '', '', ''), ('', '', 'x', '')])
+        self.assertEqual(self.parser.tokenizer.findall('5 56'),
+                         [('5', '', '', ''), ('', '', '', ''), ('56', '', '', '')])
+        self.assertEqual(self.parser.tokenizer.findall('5+56'),
+                         [('5', '', '', ''), ('', '+', '', ''), ('56', '', '', '')])
+        self.assertEqual(self.parser.tokenizer.findall('xy'),
+                         [('', '', 'xy', '')])
+        self.assertEqual(self.parser.tokenizer.findall('5x'),
+                         [('5', '', '', ''), ('', '', 'x', '')])
 
     def test_incompatible_tokenizer(self):
         with self.assertRaises(RuntimeError) as ec:
             self.parser.parse('INCOMPATIBLE')
         self.assertIn("incompatible tokenizer", str(ec.exception))
 
+    def test_string_repr(self):
+        self.assertEqual(repr(self.parser),
+                         f'<ExpressionParser object at {hex(id(self.parser))}>')
+        self.assertEqual(str(self.parser), 'ExpressionParser()')
+
     def test_expression(self):
         token = self.parser.parse('10 + 6')
         self.assertEqual(token.evaluate(), 16)
+
+    def test_iter_method(self):
+        token = self.parser.parse('9 + 7 - 5')
+
+        self.assertEqual(list(tk.source for tk in token.iter()),
+                         ['9', '9 + 7', '7', '9 + 7 - 5', '5'])
+        self.assertEqual(list(tk.source for tk in token.iter('(integer)')),
+                         ['9', '7', '5'])
+        self.assertEqual(list(tk.source for tk in token.iter('(name)')), [])
+
+        class SampleParser(Parser):
+            pass
+
+        @SampleParser.method(SampleParser.nullary('.'))
+        def evaluate_self(_self, _context=None):
+            return _self
+
+        parser = SampleParser()
+        token = parser.parse('.')
+        self.assertEqual(list(tk.source for tk in token.iter()), ['.'])
+        self.assertEqual(list(tk.source for tk in token.iter('.')), ['.'])
+        self.assertEqual(list(tk.source for tk in token.iter('..')), [])
 
     def test_syntax_errors(self):
         with self.assertRaises(ParseError) as ec:
@@ -301,40 +323,35 @@ class TdopParserTest(unittest.TestCase):
         self.assertEqual(AnotherParser.literals_pattern.pattern,
                          r"""'[^']*'|"[^"]*"|(?:\d+|\.\d+)(?:\.\d*)?(?:[Ee][+-]?\d+)?""")
 
-    def test_incomplete_parser_build(self):
-
-        class UnfinishedParser(Parser):
-            SYMBOLS = {'(integer)', r'function\(', r'axis\:\:', '(name)', '(end)'}
-
-        UnfinishedParser.literal('(integer)')
-        UnfinishedParser.register(r'function\(')
-        UnfinishedParser.register(r'axis\:\:')
-        UnfinishedParser.register('(end)')
-
-        with self.assertRaises(ValueError) as ec:
-            UnfinishedParser.build()
-        self.assertIn("unregistered symbols: ['(name)']", str(ec.exception))
-
     def test_invalid_registrations(self):
 
         class AnotherParser(Parser):
-            SYMBOLS = {'(integer)', r'function\(', '(name)', '(end)'}
+            SYMBOLS = {'(integer)', '(name)'}
 
         with self.assertRaises(ValueError) as ec:
             AnotherParser.register(r'function \(')
         self.assertIn("a symbol can't contain whitespaces", str(ec.exception))
 
-        with self.assertRaises(NameError) as ec:
-            AnotherParser.register('undefined')
-        self.assertIn("'undefined' is not a symbol of the parser", str(ec.exception))
+        with self.assertRaises(TypeError) as ec:
+            AnotherParser.register(9)
+        self.assertIn("A string or a", str(ec.exception))
+
+        AnotherParser.register(self.parser.symbol_table['+'])
+        AnotherParser.symbol_table['-'] = self.parser.symbol_table['+']
+
+        with self.assertRaises(ValueError) as ec:
+            AnotherParser.register(self.parser.symbol_table['-'])
+        self.assertIn("Token class ", str(ec.exception))
+        self.assertIn("collide", str(ec.exception))
 
     def test_other_operators(self):
 
         class ExpressionParser(Parser):
-            SYMBOLS = {'(integer)', '+', '++', '-', '*', '(end)'}
+            SYMBOLS = {'(integer)', '+', '++', '-', '*', '(name)'}
 
         ExpressionParser.prefix('++')
         ExpressionParser.postfix('+')
+        ExpressionParser.nullary('(name)')
 
         @ExpressionParser.method(ExpressionParser.prefix('++', bp=90))
         def evaluate_increment(self_, context=None):
@@ -362,11 +379,30 @@ class TdopParserTest(unittest.TestCase):
         ExpressionParser.literal('(integer)')
         ExpressionParser.register('(end)')
 
+        with self.assertRaises(AttributeError) as ec:
+            @ExpressionParser.method('*', bp=70)
+            def foo_mul(self_):
+                return None
+        self.assertIn("has no attribute 'foo'", str(ec.exception))
+
+        with self.assertRaises(TypeError) as ec:
+            @ExpressionParser.method('*', bp=70)
+            def label_mul(self_):
+                return None
+        self.assertIn("'label' is not a method of ", str(ec.exception))
+
         parser = ExpressionParser()
+
+        token = parser.parse('foo')
+        self.assertEqual(token.evaluate(), 'foo')
 
         token = parser.parse('++5')
         self.assertEqual(token.source, '++ 5')
         self.assertEqual(token.evaluate(), 6)
+
+        with self.assertRaises(ParseError) as ec:
+            parser.parse('1 ++ 5')
+        self.assertEqual(str(ec.exception), "unexpected '++' prefix operator")
 
         token = parser.parse('8 +')
         self.assertEqual(token.source, '8 +')

@@ -3,20 +3,17 @@ Upstream-Name: elementpath
 Source: https://github.com/sissaschool/elementpath
 
 Files: *
-Copyright: (c), 2018-2022, SISSA (Scuola Internazionale Superiore di Studi Avanzati)
+Copyright: 2016-2026, SISSA (International School for Advanced Studies)
 License: Expat
 
 Files: debian/*
-Copyright: (c) 2020, Alvin Chen <sonoma001@gmail.com>
-           (c) 2020-2022, SZ Lin (林上智) <szlin@debian.org>
+Copyright: 2020, Alvin Chen <sonoma001@gmail.com>
+           2020-2022, SZ Lin (林上智) <szlin@debian.org>
+	   2024, Timo Röhling <roehling@debian.org>
 License: Expat
 Comment: Debian packaging is licensed under the same terms as upstream
 
 License: Expat
- The MIT License (MIT)
- .
- Copyright (c), 2018-2020, SISSA (Scuola Internazionale Superiore di Studi Avanzati)
- .
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
  in the Software without restriction, including without limitation the rights

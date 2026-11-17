@@ -1,5 +1,5 @@
 #
-# Copyright (c), 2018-2022, SISSA (International School for Advanced Studies).
+# Copyright (c), 2018-2026, SISSA (International School for Advanced Studies).
 # All rights reserved.
 # This file is distributed under the terms of the MIT License.
 # See the file 'LICENSE' in the root directory of the present
@@ -7,10 +7,10 @@
 #
 # @author Davide Brunato <brunato@sissa.it>
 #
-__version__ = '3.0.2'
+__version__ = '5.1.3'
 __author__ = "Davide Brunato"
 __contact__ = "brunato@sissa.it"
-__copyright__ = "Copyright 2018-2022, SISSA"
+__copyright__ = "Copyright 2018-2026, SISSA"
 __license__ = "MIT"
 __status__ = "Production/Stable"
 
@@ -23,31 +23,31 @@ from . import protocols  # Protocols for type annotations
 from .exceptions import ElementPathError, MissingContextError, ElementPathKeyError, \
     ElementPathZeroDivisionError, ElementPathNameError, ElementPathOverflowError, \
     ElementPathRuntimeError, ElementPathSyntaxError, ElementPathTypeError, \
-    ElementPathValueError, ElementPathLocaleError
+    ElementPathValueError, ElementPathLocaleError, UnsupportedFeatureError
 
 from .xpath_context import XPathContext, XPathSchemaContext
-from .xpath_nodes import XPathNode, DocumentNode, ElementNode, AttributeNode, \
-    NamespaceNode,  CommentNode, ProcessingInstructionNode, TextNode, \
-    LazyElementNode, SchemaElementNode
+from .xpath_nodes import XPathNode, AttributeNode, NamespaceNode, CommentNode, \
+    ProcessingInstructionNode, TextNode, ElementNode, LazyElementNode, \
+    SchemaElementNode, DocumentNode
 from .tree_builders import get_node_tree, build_node_tree, build_lxml_node_tree, \
     build_schema_node_tree
-from .xpath_token import XPathToken, XPathFunction
+from .xpath_tokens import XPathToken, XPathFunction
 from .xpath1 import XPath1Parser
 from .xpath2 import XPath2Parser
 from .xpath_selectors import select, iter_select, Selector
 from .schema_proxy import AbstractSchemaProxy
-from .regex import RegexError, translate_pattern
-
-TypedElement = ElementNode  # for backward compatibility with xmlschema<=1.10.0
+from .regex import RegexError, translate_pattern, install_unicode_data, unicode_version
 
 __all__ = ['datatypes', 'protocols', 'etree', 'ElementPathError', 'MissingContextError',
-           'ElementPathKeyError', 'ElementPathZeroDivisionError', 'ElementPathNameError',
-           'ElementPathOverflowError', 'ElementPathRuntimeError', 'ElementPathSyntaxError',
-           'ElementPathTypeError', 'ElementPathValueError', 'ElementPathLocaleError',
-           'XPathContext', 'XPathSchemaContext', 'XPathNode', 'DocumentNode',
-           'ElementNode', 'AttributeNode', 'NamespaceNode', 'CommentNode',
-           'ProcessingInstructionNode', 'TextNode', 'LazyElementNode',
-           'SchemaElementNode', 'TypedElement', 'get_node_tree', 'build_node_tree',
-           'build_lxml_node_tree', 'build_schema_node_tree', 'XPathToken',
+           'UnsupportedFeatureError', 'ElementPathKeyError',  'ElementPathLocaleError',
+           'ElementPathZeroDivisionError', 'ElementPathNameError',
+           'ElementPathOverflowError', 'ElementPathRuntimeError',
+           'ElementPathSyntaxError', 'ElementPathTypeError', 'ElementPathValueError',
+           'XPathNode', 'AttributeNode', 'NamespaceNode', 'CommentNode',
+           'ProcessingInstructionNode', 'TextNode', 'ElementNode',
+           'LazyElementNode', 'SchemaElementNode', 'DocumentNode', 'get_node_tree',
+           'build_node_tree', 'build_lxml_node_tree', 'build_schema_node_tree',
+           'XPathContext', 'XPathSchemaContext', 'XPathToken',
            'XPathFunction', 'XPath1Parser', 'XPath2Parser', 'select', 'iter_select',
-           'Selector', 'AbstractSchemaProxy', 'RegexError', 'translate_pattern']
+           'Selector', 'AbstractSchemaProxy', 'RegexError', 'translate_pattern',
+           'install_unicode_data', 'unicode_version']

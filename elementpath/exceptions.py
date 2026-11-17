@@ -1,5 +1,5 @@
 #
-# Copyright (c), 2018-2020, SISSA (International School for Advanced Studies).
+# Copyright (c), 2018-2026, SISSA (International School for Advanced Studies).
 # All rights reserved.
 # This file is distributed under the terms of the MIT License.
 # See the file 'LICENSE' in the root directory of the present
@@ -8,9 +8,14 @@
 # @author Davide Brunato <brunato@sissa.it>
 #
 import locale
-from typing import TYPE_CHECKING, Optional, Any
+from typing import TYPE_CHECKING, Any, Optional, Union
+
 if TYPE_CHECKING:
-    from .tdop import Token
+    from elementpath.tdop import Token
+
+from elementpath.aliases import AnyNsmapType
+from elementpath.namespaces import XQT_ERRORS_NAMESPACE
+from elementpath import datatypes
 
 
 class ElementPathError(Exception):
@@ -47,6 +52,14 @@ class MissingContextError(ElementPathError):
     """Raised when the dynamic context is required for evaluate the XPath expression."""
 
 
+class UnsupportedFeatureError(ElementPathError, NotImplementedError):
+    """Raised when an XPath feature is not supported in the current context."""
+
+
+class XMLResourceForbidden(ElementPathError):
+    """Raised when the parsing of an XML resource is forbidden for safety reasons."""
+
+
 class ElementPathKeyError(ElementPathError, KeyError):
     pass
 
@@ -56,6 +69,10 @@ class ElementPathZeroDivisionError(ElementPathError, ZeroDivisionError):
 
 
 class ElementPathNameError(ElementPathError, NameError):
+    pass
+
+
+class ElementPathOSError(ElementPathError, OSError):
     pass
 
 
@@ -88,7 +105,7 @@ XPATH_ERROR_CODES = {
     'XPST0001': (ElementPathValueError, 'Parser not bound to a schema'),
     'XPST0003': (ElementPathSyntaxError, 'Invalid XPath expression'),
     'XPDY0002': (MissingContextError, 'Dynamic context required for evaluate'),
-    'XPTY0004': (ElementPathTypeError, 'Type is not appropriate for the context'),
+    'XPTY0004': (ElementPathTypeError, 'type is not appropriate for the context'),
     'XPST0005': (ElementPathValueError, 'A not empty sequence required'),
     'XPST0008': (ElementPathNameError, 'Name not found'),
     'XPST0010': (ElementPathNameError, 'Axis not found'),
@@ -97,7 +114,7 @@ XPATH_ERROR_CODES = {
                  'Step result contains both nodes and atomic values'),
     'XPTY0019': (ElementPathTypeError, 'Intermediate step contains an atomic value'),
     'XPTY0020': (ElementPathTypeError, 'Context item is not a node'),
-    'XPDY0050': (ElementPathTypeError, 'Type does not match sequence type'),
+    'XPDY0050': (ElementPathTypeError, 'type does not match sequence type'),
     'XPST0051': (ElementPathNameError, 'Unknown atomic type'),
     'XPST0080': (ElementPathNameError,
                  'Target type cannot be xs:NOTATION or xs:anyAtomicType'),
@@ -116,7 +133,7 @@ XPATH_ERROR_CODES = {
     'FOCH0001': (ElementPathValueError, 'Code point not valid'),
     'FOCH0002': (ElementPathLocaleError, 'Unsupported collation'),
     'FOCH0003': (ElementPathValueError, 'Unsupported normalization form'),
-    'FOCH0004': (ElementPathValueError, 'Collation does not support collation units'),
+    'FOCH0004': (ElementPathLocaleError, 'Collation does not support collation units'),
     'FODC0001': (ElementPathValueError, 'No context document'),
     'FODC0002': (ElementPathValueError, 'Error retrieving resource'),
     'FODC0003': (ElementPathValueError, 'Function stability not defined'),
@@ -181,53 +198,120 @@ XPATH_ERROR_CODES = {
     'SENR0001': (ElementPathTypeError, 'item is an attribute node or a namespace node'),
     'SEPM0016': (ElementPathValueError, 'parameter value is invalid for the defined domain'),
     'SEPM0017': (ElementPathValueError, 'error during extraction of serialization parameters'),
-    'SEPM0018': (ElementPathValueError, 'use-character-maps serialization parameter in '
-                                        'a sequence of length greater than one'),
+    'SEPM0018': (ElementPathTypeError, 'use-character-maps serialization parameter in '
+                                       'a sequence of length greater than one'),
     'SEPM0019': (ElementPathValueError, 'same serialization parameter appears more than once'),
+    'SERE0020': (ElementPathTypeError, 'a numeric value being serialized using the JSON output '
+                                       'method cannot be represented in the JSON grammar'),
+    'SERE0021': (ElementPathTypeError, 'a sequence being serialized using the JSON output '
+                                       'method includes items for which no rules are provided '
+                                       'in the appropriate section of the serialization rules'),
+    'SERE0022': (ElementPathValueError, 'a map being serialized using the JSON output method '
+                                        'has two keys with the same string value'),
+    'SERE0023': (ElementPathTypeError, 'a sequence being serialized using the JSON output '
+                                       'method is of length greater than one'),
 
     # XPath 3.1+ errors
+    'FOJS0001': (ElementPathSyntaxError, 'JSON syntax error'),
+    'FOJS0003': (ElementPathValueError, 'JSON duplicate keys'),
+    'FOJS0004': (ElementPathRuntimeError, 'JSON: not schema-aware'),
+    'FOJS0005': (ElementPathValueError, 'Invalid options'),
+    'FOJS0006': (ElementPathValueError, 'Invalid XML representation of JSON'),
+    'FOJS0007': (ElementPathValueError, 'Bad JSON escape sequence'),
     'FOAY0001': (ElementPathValueError, 'Array index out of bounds'),
     'FOAY0002': (ElementPathValueError, 'Negative array length'),
+
+    'FOQM0001': (ElementPathValueError, 'Module URI is a zero-length string'),
+    'FOQM0002': (ElementPathRuntimeError, 'Module URI not found'),
+    'FOQM0003': (ElementPathRuntimeError, 'Static error in dynamically-loaded XQuery module'),
+    'FOQM0005': (ElementPathValueError, 'Parameter for dynamically-loaded '
+                                        'XQuery module has incorrect type'),
+    'FOQM0006': (ElementPathRuntimeError, 'No suitable XQuery processor available'),
+
+    'FOXT0001': (ElementPathRuntimeError, 'No suitable XSLT processor available'),
+    'FOXT0002': (ElementPathValueError, 'Invalid parameters to XSLT transformation'),
+    'FOXT0003': (ElementPathRuntimeError, 'XSLT transformation failed'),
+    'FOXT0004': (ElementPathRuntimeError, 'XSLT transformation has been disabled'),
+    'FOXT0006': (ElementPathValueError, 'XSLT output contains non-accepted characters'),
+
+    'FOAP0001': (ElementPathTypeError, 'Wrong number of arguments'),
+    'FORG0010': (ElementPathValueError, 'Invalid date/time'),
+    'XQDY0137': (ElementPathValueError, 'No two keys in a map may have the same key value'),
 }
 
 
-def xpath_error(code: str, message: Optional[str] = None,
-                token: Optional['Token[Any]'] = None, prefix: str = 'err') -> ElementPathError:
+def xpath_error(code: Union[str, 'datatypes.QName'],
+                message_or_error:  Union[None, str, Exception] = None,
+                token: Optional['Token[Any]'] = None,
+                namespaces: AnyNsmapType = None) -> ElementPathError:
     """
     Returns an XPath error instance related with a code. An XPath/XQuery/XSLT error code
     (ref: http://www.w3.org/2005/xqt-errors) is an alphanumeric token starting with four
     uppercase letters and ending with four digits.
 
     :param code: the error code.
-    :param message: an optional custom additional message.
+    :param message_or_error: an optional custom message or related exception.
     :param token: an optional token instance.
-    :param prefix: the namespace prefix to apply to the error code, defaults to 'err'.
+    :param namespaces: an optional namespace mapping for finding the prefix \
+    related with the namespace 'http://www.w3.org/2005/xqt-errors'.
+    For default the prefix 'err' is used.
     """
-    if code.startswith('{'):
-        try:
-            namespace, code = code[1:].split('}')
-        except ValueError:
-            message = '{!r} is not an xs:QName'.format(code)
-            raise ElementPathValueError(message, 'err:XPTY0004', token)
+    if isinstance(code, datatypes.QName):
+        namespace = code.uri
+        if namespace:
+            pcode, code = code.qname, code.local_name
         else:
-            if namespace != 'http://www.w3.org/2005/xqt-errors':
-                message = 'invalid namespace {!r}'.format(namespace)
-                raise ElementPathValueError(message, 'err:XPTY0004', token)
-            pcode = '%s:%s' % (prefix, code) if prefix else code
-    elif ':' not in code:
-        pcode = '%s:%s' % (prefix, code) if prefix else code
-    elif not prefix or not code.startswith(prefix + ':'):
-        message = '%r is not an XPath error code' % code
-        raise ElementPathValueError(message, 'err:XPTY0004', token)
+            pcode, code = code.braced_uri_name, code.local_name
     else:
-        pcode = code
-        code = code[len(prefix) + 1:]
+        namespace = XQT_ERRORS_NAMESPACE
+        prefix: Optional[str]
+        if not namespaces or namespaces.get('err') == XQT_ERRORS_NAMESPACE:
+            prefix = 'err'
+        else:
+            for prefix, uri in namespaces.items():
+                if uri == XQT_ERRORS_NAMESPACE:
+                    break
+            else:
+                prefix = 'err'
+
+        if code.startswith('{'):
+            try:
+                namespace, code = code[1:].split('}')
+            except ValueError:
+                message = '{!r} is not an xs:QName'.format(code)
+                raise ElementPathValueError(message, 'err:XPTY0004', token)
+            else:
+                pcode = f'{prefix}:{code}' if prefix else code
+
+        elif ':' not in code:
+            pcode = f'{prefix}:{code}' if prefix else code
+        elif code.startswith(f'{prefix}:') and code.count(':') == 1:
+            pcode, code = code, code.split(':')[1]
+        else:
+            message = '%r is not an XPath error code' % code
+            raise ElementPathValueError(message, 'err:XPTY0004', token)
+
+        if namespace != XQT_ERRORS_NAMESPACE:
+            message = 'invalid namespace {!r}'.format(namespace)
+            raise ElementPathValueError(message, 'err:XPTY0004', token)
 
     try:
         error_class, default_message = XPATH_ERROR_CODES[code]
     except KeyError:
-        raise ElementPathValueError(
-            message or 'unknown XPath error code %r' % code, 'err:XPTY0004', token
-        )
+        if namespace == XQT_ERRORS_NAMESPACE:
+            message = f'unknown XPath error code {code}'
+            raise ElementPathValueError(message, 'err:XPTY0004', token) from None
+        else:
+            error_class = ElementPathError
+            default_message = 'custom XPath error'
+
+    if message_or_error is None:
+        message = default_message
+    elif isinstance(message_or_error, str):
+        message = message_or_error
+    elif isinstance(message_or_error, ElementPathError):
+        message = message_or_error.message
     else:
-        return error_class(message or default_message, pcode, token)
+        message = str(message_or_error)
+
+    return error_class(message, pcode, token)

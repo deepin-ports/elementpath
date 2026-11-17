@@ -1,5 +1,5 @@
 #
-# Copyright (c), 2018-2020, SISSA (International School for Advanced Studies).
+# Copyright (c), 2018-2026, SISSA (International School for Advanced Studies).
 # All rights reserved.
 # This file is distributed under the terms of the MIT License.
 # See the file 'LICENSE' in the root directory of the present
@@ -10,9 +10,11 @@
 """
 XPath 3.1 implementation
 """
-from ..namespaces import XPATH_MAP_FUNCTIONS_NAMESPACE, \
-    XPATH_ARRAY_FUNCTIONS_NAMESPACE  # , XSLT_XQUERY_SERIALIZATION_NAMESPACE
-from ..xpath30 import XPath30Parser
+from typing import ClassVar
+
+import elementpath.namespaces as ns
+from elementpath.datatypes import QName
+from elementpath.xpath30 import XPath30Parser
 
 
 class XPath31Parser(XPath30Parser):
@@ -21,29 +23,9 @@ class XPath31Parser(XPath30Parser):
     """
     version = '3.1'
 
-    SYMBOLS = XPath30Parser.SYMBOLS | {
-        # Map and array functions
-        'map', 'array',  # 'merge',
-        'size', 'keys', 'contains', 'get',  # 'find',
-        'put',  # 'entry',
-        # 'remove', 'append', 'subarray', 'remove', 'join', 'flatten',
-
-        # 'random-number-generator', 'collation-key',
-        # 'contains-token', 'parse-ietf-date',
-
-        # Higher-order functions
-        # 'sort', 'apply', 'load-xquery-module', 'transform',
-
-        # Functions on JSON Data
-        # 'parse-json', 'json-doc', 'json-to-xml', 'xml-to-json',
-
-        # Arrow operator
-        # '=>',
-    }
-
-    DEFAULT_NAMESPACES = {
-        'map': XPATH_MAP_FUNCTIONS_NAMESPACE,
-        'array': XPATH_ARRAY_FUNCTIONS_NAMESPACE,
+    DEFAULT_NAMESPACES: ClassVar[dict[str, str]] = {
+        'map': ns.XPATH_MAP_FUNCTIONS_NAMESPACE,
+        'array': ns.XPATH_ARRAY_FUNCTIONS_NAMESPACE,
         **XPath30Parser.DEFAULT_NAMESPACES
     }
 
@@ -54,4 +36,4 @@ class XPath31Parser(XPath30Parser):
         'schema-attribute', 'schema-element', 'switch', 'text', 'typeswitch',
     }
 
-    function_signatures = XPath30Parser.function_signatures.copy()
+    function_signatures: dict[tuple[QName, int], str] = XPath30Parser.function_signatures.copy()

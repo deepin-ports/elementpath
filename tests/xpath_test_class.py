@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c), 2018-2020, SISSA (International School for Advanced Studies).
+# Copyright (c), 2018-2026, SISSA (International School for Advanced Studies).
 # All rights reserved.
 # This file is distributed under the terms of the MIT License.
 # See the file 'LICENSE' in the root directory of the present
@@ -25,7 +25,8 @@ from copy import copy
 from contextlib import contextmanager
 from xml.etree import ElementTree
 
-from elementpath import ElementPathError, XPath2Parser, XPathContext, select
+from elementpath import ElementPathError, XPath2Parser, XPathContext, \
+    XPathFunction, select
 from elementpath.namespaces import XML_NAMESPACE, XSD_NAMESPACE, \
     XSI_NAMESPACE, XPATH_FUNCTIONS_NAMESPACE
 
@@ -33,6 +34,10 @@ from elementpath.namespaces import XML_NAMESPACE, XSD_NAMESPACE, \
 class DummyXsdType:
     name = local_name = None
 
+    @property
+    def root_type(self): return self
+    @property
+    def simple_type(self): return self
     def is_matching(self, name, default_namespace): pass
     def is_empty(self): pass
     def is_simple(self): pass
@@ -108,16 +113,18 @@ class XPathTestCase(unittest.TestCase):
         :param path: an XPath expression.
         :param expected: the expected result string.
         """
-        self.assertEqual(self.parser.parse(path).tree, expected)
+        token = self.parser.parse(path)
+        self.assertEqual(token.tree, expected)
 
-    def check_source(self, path, expected):
+    def check_source(self, path, expected=None):
         """
         Checks the source representation of a parsed path.
 
         :param path: an XPath expression.
         :param expected: the expected result string.
         """
-        self.assertEqual(self.parser.parse(path).source, expected)
+        token = self.parser.parse(path)
+        self.assertEqual(token.source, expected or path)
 
     def check_value(self, path, expected=None, context=None):
         """
@@ -139,24 +146,33 @@ class XPathTestCase(unittest.TestCase):
                 return
             raise
 
-        if isinstance(expected, type) and issubclass(expected, Exception):
-            self.assertRaises(expected, root_token.evaluate, context)
-        elif isinstance(expected, float) and math.isnan(expected):
-            value = root_token.evaluate(context)
-            if isinstance(value, list):
-                self.assertTrue(any(math.isnan(x) for x in value))
+        if expected is None:
+            self.assertEqual(root_token.evaluate(context), [])
+        elif isinstance(expected, type):
+            if issubclass(expected, Exception):
+                self.assertRaises(expected, root_token.evaluate, context)
             else:
+                self.assertIsInstance(root_token.evaluate(context), expected)
+
+        elif isinstance(expected, float):
+            value = root_token.evaluate(context)
+            if not math.isnan(expected):
+                self.assertAlmostEqual(value, expected)
+            else:
+                if isinstance(value, list):
+                    value = [x for x in value if value is not None and value != []]
+                    self.assertTrue(len(value) == 1)
+                    value = value[0]
+
+                self.assertIsInstance(value, float)
                 self.assertTrue(math.isnan(value))
 
         elif isinstance(expected, list):
-            self.assertListEqual(root_token.evaluate(context), expected)
+            self.assertEqual(root_token.evaluate(context), expected)
         elif isinstance(expected, set):
             self.assertEqual(set(root_token.evaluate(context)), expected)
-        elif not callable(expected):
+        elif isinstance(expected, XPathFunction) or not callable(expected):
             self.assertEqual(root_token.evaluate(context), expected)
-        elif isinstance(expected, type):
-            value = root_token.evaluate(context)
-            self.assertIsInstance(value, expected)
         else:
             self.assertTrue(expected(root_token.evaluate(context)))
 
@@ -181,13 +197,13 @@ class XPathTestCase(unittest.TestCase):
         if isinstance(expected, type) and issubclass(expected, Exception):
             self.assertRaises(expected, root_token.select, context)
         elif isinstance(expected, list):
-            self.assertListEqual(list(root_token.select(context)), expected)
+            self.assertEqual(list(root_token.select(context)), expected)
         elif isinstance(expected, set):
             self.assertEqual(set(root_token.select(context)), expected)
-        elif not callable(expected):
-            self.assertEqual(list(root_token.select(context)), expected)
-        else:
+        elif callable(expected):
             self.assertTrue(expected(list(root_token.parser.parse(path).select(context))))
+        else:
+            self.assertEqual(list(root_token.select(context)), expected)  # must fail
 
     def check_selector(self, path, root, expected, namespaces=None, **kwargs):
         """
@@ -208,17 +224,26 @@ class XPathTestCase(unittest.TestCase):
         else:
             results = select(root, path, namespaces, self.parser.__class__, **kwargs)
             if isinstance(expected, list):
-                self.assertListEqual(results, expected)
+                self.assertEqual(results, expected)
             elif isinstance(expected, set):
                 self.assertEqual(set(results), expected)
-            elif isinstance(expected, float) and math.isnan(expected):
-                self.assertTrue(math.isnan(results))
-            elif not callable(expected):
-                self.assertEqual(results, expected)
-            elif isinstance(expected, type):
-                self.assertIsInstance(results, expected)
             else:
-                self.assertTrue(expected(results))
+                if isinstance(results, list) and len(results) == 1:
+                    result = results[0]
+                else:
+                    result = results
+
+                if isinstance(expected, float):
+                    if math.isnan(expected):
+                        self.assertTrue(math.isnan(result))
+                    else:
+                        self.assertAlmostEqual(result, expected)
+                elif not callable(expected):
+                    self.assertEqual(result, expected)
+                elif isinstance(expected, type):
+                    self.assertIsInstance(result, expected)
+                else:
+                    self.assertTrue(expected(result))
 
     @contextmanager
     def schema_bound_parser(self, schema_proxy):

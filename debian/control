@@ -1,25 +1,32 @@
 Source: elementpath
 Section: python
 Priority: optional
-Maintainer: SZ Lin (林上智) <szlin@debian.org>
-Build-Depends: debhelper-compat (= 13),
-               dh-python,
-               python3-all,
-               python3-setuptools,
-               python3-lxml,
-               locales-all
-Standards-Version: 4.6.1.0
+Maintainer: Debian Python Team <team+python@tracker.debian.org>
+Uploaders:
+ Timo Röhling <roehling@debian.org>,
+Build-Depends:
+ debhelper-compat (= 14),
+ dh-python,
+ dh-sequence-python3,
+ locales-all,
+ pybuild-plugin-pyproject,
+ python3-all,
+ python3-lxml <!nocheck>,
+ python3-setuptools,
+ python3-xmlschema (>= 2.0.0) <!nocheck>,
+Standards-Version: 4.7.4
 Homepage: https://github.com/sissaschool/elementpath
-Vcs-Browser: https://salsa.debian.org/debian/elementpath
-Vcs-Git: https://salsa.debian.org/debian/elementpath.git
-Rules-Requires-Root: no
+Vcs-Browser: https://salsa.debian.org/python-team/packages/elementpath
+Vcs-Git: https://salsa.debian.org/python-team/packages/elementpath.git
+Testsuite: autopkgtest-pkg-pybuild
+Description: XPath selectors for XML data structures in Python
+ This package provides XPath 1.0, 2.0, 3.0 and 3.1 selectors
+ for Python's ElementTree XML data structures, both for the standard
+ ElementTree library and for the lxml.etree library.
 
 Package: python3-elementpath
 Architecture: all
-Depends: ${misc:Depends}, ${python3:Depends}
-Description: Providing XPath selectors for Python's XML data structures
- The proposal of this package is to provide XPath 1.0 and 2.0 selectors
- for Python's ElementTree XML data structures, both for the standard
- ElementTree library and for the lxml.etree library.For lxml.etree.
- this package can be useful for providing XPath 2.0 selectors,
- because lxml.etree already has it's own implementation of XPath 1.0.
+Breaks:
+ python3-xmlschema (<< 4),
+Description: ${source:Synopsis}
+ ${source:Extended-Description}

@@ -2,6 +2,143 @@
 CHANGELOG
 *********
 
+`v5.1.3`_ (2026-06-28)
+======================
+* Fix protection against type cast errors during the static analysis phase
+
+`v5.1.2`_ (2026-06-13)
+======================
+* Include PR #101 (invalid sequence type error code for external functions)
+* Fix issues #100 and #102
+
+`v5.1.1`_ (2026-01-20)
+======================
+* Fix external function registrations (issue #099)
+* Add ExternalFunction and SchemaConstructor token classes
+
+`v5.1.0`_ (2025-12-28)
+======================
+* Drop Python 3.9 compatibility and add Pyton 3.15 support
+* Improve XPath sequence internal processing with a list derived type `xlist'
+* Extensions and fixes for XSD datatypes
+* Add `XSequence` datatype for external representation of XPath sequences
+
+`v5.0.4`_ (2025-08-16)
+======================
+* Fix default/fixed values processing of schema annotated XML data (issue #94)
+
+`v5.0.3`_ (2025-06-28)
+======================
+* Fix for XPath 1.0 processing of schema annotated XML data (issue #93)
+
+`v5.0.2`_ (2025-06-18)
+======================
+* Fix for XPath 2.0 *fn:node-name* (issue #91)
+* Workaround for processing arguments with multiple occurrences for external functions (issue #92)
+
+`v5.0.1`_ (2025-05-11)
+======================
+* Fix XDM type labeling with element and xsi:type substitutions (issue #89)
+
+`v5.0.0`_ (2025-04-27)
+======================
+* Replace SafeXMLParser with SafeExpatParser
+* Drop compatibility with Python 3.8
+* Restruct node trees with XPathNodeTree backbone
+* Unicode categories fallback with a warning (issue #85)
+* Rewriting decoder module (issue #87)
+* Add extras subpackage for experiment XDM and XPath on Path objects
+
+`v4.8.0`_ (2025-03-03)
+======================
+* Add full PSVI type labeling in XDM to solve type errors with XSD 1.1 assertions
+* Add *schema* optional argument to dynamic context
+* Add a RootToken as a proxy of the parsed token tree for compatibility with xmlschema<=3.4.3
+* Extend XDM to split ElementTree/lxml processing from schema nodes and to allow future extensions
+
+`v4.7.0`_ (2024-12-20)
+======================
+* Fix *fragment* argument usage (issue #81)
+* Fix constructors nud() to skip argument check with XP31+ arrow operator (issue #83)
+
+`v4.6.0`_ (2024-10-27)
+======================
+* Fix XsdAttributeGroupProtocol
+* Improve Unicode support with installable UnicodeData.txt versions
+* Extend names disambiguation with a fix for issue #78
+* Refactor tree builders to fix document position of tails (issue #79)
+
+`v4.5.0`_ (2024-09-09)
+======================
+* Fix and clean node trees iteration methods (issue #72)
+* Fix missing raw string for '[^\r\n]' (pull request #76)
+* Full and more specific type annotations
+
+`v4.4.0`_ (2024-03-11)
+======================
+* Improve stand-alone XPath functions builder (issue #70)
+* Update tokens and parsers __repr__
+* Fix static typing protocols to work with etree and XSD elements
+
+`v4.3.0`_ (2024-02-17)
+======================
+* Change the purpose of the evaluation with a dynamic schema context
+* Add a tox.ini testenv with Python 3.13 pre-releases
+
+`v4.2.1`_ (2024-02-10)
+======================
+* Fix dynamic context initialization with lxml a non-root element (issue #71)
+* Fix XP30+ function fn:function-lookup
+* Fix XP30+ fn:unparsed-text, fn:unparsed-text-lines and fn:unparsed-text-available
+
+`v4.2.0`_ (2024-02-03)
+======================
+* Drop support for Python 3.7
+* Add *uri* and *fragment* options to dynamic context
+* Make context root node not mandatory (issue #63)
+* Add function objects constructor (issue #70)
+
+`v4.1.5`_ (2023-07-25)
+======================
+* Fix typed value of ElementNode() if self.elem.text is None
+
+`v4.1.4`_ (2023-06-26)
+======================
+* Fix select of prefixed names (issue #68)
+* Fix zero length *xs:base64Binary* (pull request #69)
+
+`v4.1.3`_ (2023-06-17)
+======================
+* Fix XP30+ fn:path (issue #67)
+* Fix weak tests (issues #64 and #66)
+
+`v4.1.2`_ (2023-04-28)
+======================
+* Add support for Python 3.12
+* Fix self shortcut operator (adding is_schema_node() to node classes)
+
+`v4.1.1`_ (2023-04-11)
+======================
+* Simplify type annotations for XSD datatypes
+* Full test coverage of sequence type functions with bugfixes
+
+`v4.1.0`_ (2023-03-21)
+======================
+* Refactor XPath function call (context=None only as keyword argument)
+* Add external function support (issue #60)
+* Some fixes to string representation and source property of tokens
+* Extend documentation and tests
+* Clean XSD datatypes hierarchy
+
+`v4.0.1`_ (2023-02-02)
+======================
+* Fix packaging: include py.typed in package data
+* Revert to comparison between xs:QName instances and strings
+
+`v4.0.0`_ (2023-02-01)
+======================
+* First XPath 3.1 implementation (without UCA collation support)
+
 `v3.0.2`_ (2022-08-12)
 ======================
 * Extend root concept to subtrees used as root (e.g. XSD 1.1 assertions)
@@ -386,3 +523,28 @@ CHANGELOG
 .. _v3.0.0: https://github.com/sissaschool/elementpath/compare/v2.5.3...v3.0.0
 .. _v3.0.1: https://github.com/sissaschool/elementpath/compare/v3.0.0...v3.0.1
 .. _v3.0.2: https://github.com/sissaschool/elementpath/compare/v3.0.1...v3.0.2
+.. _v4.0.0: https://github.com/sissaschool/elementpath/compare/v3.0.2...v4.0.0
+.. _v4.0.1: https://github.com/sissaschool/elementpath/compare/v4.0.0...v4.0.1
+.. _v4.1.0: https://github.com/sissaschool/elementpath/compare/v4.0.1...v4.1.0
+.. _v4.1.1: https://github.com/sissaschool/elementpath/compare/v4.1.0...v4.1.1
+.. _v4.1.2: https://github.com/sissaschool/elementpath/compare/v4.1.1...v4.1.2
+.. _v4.1.3: https://github.com/sissaschool/elementpath/compare/v4.1.2...v4.1.3
+.. _v4.1.4: https://github.com/sissaschool/elementpath/compare/v4.1.3...v4.1.4
+.. _v4.1.5: https://github.com/sissaschool/elementpath/compare/v4.1.4...v4.1.5
+.. _v4.2.0: https://github.com/sissaschool/elementpath/compare/v4.1.5...v4.2.0
+.. _v4.2.1: https://github.com/sissaschool/elementpath/compare/v4.2.0...v4.2.1
+.. _v4.3.0: https://github.com/sissaschool/elementpath/compare/v4.2.1...v4.3.0
+.. _v4.4.0: https://github.com/sissaschool/elementpath/compare/v4.3.0...v4.4.0
+.. _v4.5.0: https://github.com/sissaschool/elementpath/compare/v4.4.0...v4.5.0
+.. _v4.6.0: https://github.com/sissaschool/elementpath/compare/v4.5.0...v4.6.0
+.. _v4.7.0: https://github.com/sissaschool/elementpath/compare/v4.6.0...v4.7.0
+.. _v4.8.0: https://github.com/sissaschool/elementpath/compare/v4.7.0...v4.8.0
+.. _v5.0.0: https://github.com/sissaschool/elementpath/compare/v4.8.0...v5.0.0
+.. _v5.0.1: https://github.com/sissaschool/elementpath/compare/v5.0.0...v5.0.1
+.. _v5.0.2: https://github.com/sissaschool/elementpath/compare/v5.0.1...v5.0.2
+.. _v5.0.3: https://github.com/sissaschool/elementpath/compare/v5.0.2...v5.0.3
+.. _v5.0.4: https://github.com/sissaschool/elementpath/compare/v5.0.3...v5.0.4
+.. _v5.1.0: https://github.com/sissaschool/elementpath/compare/v5.0.4...v5.1.0
+.. _v5.1.1: https://github.com/sissaschool/elementpath/compare/v5.1.0...v5.1.1
+.. _v5.1.2: https://github.com/sissaschool/elementpath/compare/v5.1.1...v5.1.2
+.. _v5.1.3: https://github.com/sissaschool/elementpath/compare/v5.1.2...v5.1.3

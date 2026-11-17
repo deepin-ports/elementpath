@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c), 2018-2021, SISSA (International School for Advanced Studies).
+# Copyright (c), 2018-2026, SISSA (International School for Advanced Studies).
 # All rights reserved.
 # This file is distributed under the terms of the MIT License.
 # See the file 'LICENSE' in the root directory of the present
@@ -18,11 +18,14 @@ try:
 except ImportError:
     lxml_etree = None
 
-from elementpath import XPathContext, AttributeNode
-from elementpath.datatypes import Timezone, DateTime10, DateTime, DateTimeStamp, \
-    GregorianDay, GregorianMonth, GregorianMonthDay, GregorianYear10, GregorianYearMonth10, \
-    Duration, YearMonthDuration, DayTimeDuration, Date10, Time, QName, UntypedAtomic
+from elementpath import XPathContext, select
+from elementpath.datatypes import Timezone, DateTime, DateTimeStamp, \
+    GregorianDay, GregorianMonth, GregorianMonthDay, GregorianYear10, \
+    GregorianYearMonth10, Duration, YearMonthDuration, DayTimeDuration, \
+    Date10, Time, QName, UntypedAtomic, Base64Binary, HexBinary
+from elementpath.xpath_nodes import TextAttributeNode
 from elementpath.namespaces import XSD_NAMESPACE
+from elementpath.xpath_tokens import XPathConstructor
 
 try:
     from tests import xpath_test_class
@@ -31,6 +34,18 @@ except ImportError:
 
 
 class XPath2ConstructorsTest(xpath_test_class.XPathTestCase):
+
+    def test_constructor_class(self):
+        ntk = 0
+        for token_class in self.parser.symbol_table.values():
+            if issubclass(token_class, XPathConstructor):
+                self.assertEqual(token_class.label, 'constructor function')
+                self.assertEqual(token_class.lbp, 90)
+                self.assertEqual(token_class.rbp, 90)
+                ntk += 1
+
+        self.assertGreaterEqual(ntk, 45)
+        self.assertLessEqual(ntk, 50)
 
     def test_unknown_constructor(self):
         self.wrong_type("xs:unknown('5')", 'XPST0017', 'unknown constructor function')
@@ -46,7 +61,7 @@ class XPath2ConstructorsTest(xpath_test_class.XPathTestCase):
         self.check_value('xs:string(" hello  ")', ' hello  ')
         self.check_value('xs:string("\thello \n")', '\thello \n')
         self.check_value('xs:string(())', [])
-        self.wrong_syntax('xs:string(()', 'XPST0017')
+        self.wrong_type('xs:string(()', 'XPST0017')
 
         # canonical string representation of xs:hexBinary
         self.check_value('xs:string(xs:hexBinary("ef"))', 'EF')
@@ -274,6 +289,9 @@ class XPath2ConstructorsTest(xpath_test_class.XPathTestCase):
         self.check_value('xs:double(.)', float, context=context)
         self.check_value('xs:double(.)', 10.3, context=context)
 
+        self.check_value('xs:double(1) instance of xs:double', True)
+        self.check_value('xs:double(1) instance of xs:float', False)
+
     def test_float_constructor(self):
         self.wrong_value('xs:float("..")')
         self.wrong_value('xs:float("ab")', 'FORG0001')
@@ -298,23 +316,26 @@ class XPath2ConstructorsTest(xpath_test_class.XPathTestCase):
         finally:
             self.parser._xsd_version = '1.1'
 
+        self.check_value('xs:float(1) instance of xs:float', True)
+        self.check_value('xs:float(1) instance of xs:double', False)
+
     def test_datetime_constructor(self):
         tz1 = Timezone(datetime.timedelta(hours=5, minutes=24))
         self.check_value('xs:dateTime(())', [])
         self.check_value('xs:dateTime("1969-07-20T20:18:00")',
-                         DateTime10(1969, 7, 20, 20, 18))
+                         DateTime(1969, 7, 20, 20, 18))
         self.check_value('xs:dateTime(xs:untypedAtomic("1969-07-20T20:18:00"))',
-                         DateTime10(1969, 7, 20, 20, 18))
+                         DateTime(1969, 7, 20, 20, 18))
         self.check_value('xs:dateTime("2000-05-10T21:30:00+05:24")',
                          datetime.datetime(2000, 5, 10, hour=21, minute=30, tzinfo=tz1))
         self.check_value('xs:dateTime("1999-12-31T24:00:00")',
                          datetime.datetime(2000, 1, 1, 0, 0))
         self.check_value('xs:dateTime(xs:date("1969-07-20"))',
-                         DateTime10(1969, 7, 20))
+                         DateTime(1969, 7, 20))
 
-        self.check_value('xs:dateTime(xs:date("1969-07-20"))', DateTime10)
+        self.check_value('xs:dateTime(xs:date("1969-07-20"))', DateTime)
         with self.assertRaises(AssertionError):
-            self.check_value('xs:dateTime(xs:date("1969-07-20"))', DateTime)
+            self.check_value('xs:dateTime(xs:date("1969-07-20"))')
 
         self.parser._xsd_version = '1.1'
         try:
@@ -334,16 +355,16 @@ class XPath2ConstructorsTest(xpath_test_class.XPathTestCase):
 
         root = self.etree.XML('<root a="1969-07-20T20:18:00"/>')
         context = XPathContext(root)
-        self.check_value('xs:dateTime(@a)', DateTime10(1969, 7, 20, 20, 18), context=context)
+        self.check_value('xs:dateTime(@a)', DateTime(1969, 7, 20, 20, 18), context=context)
 
-        context.item = AttributeNode('a', str(DateTime10(1969, 7, 20, 20, 18)))
-        self.check_value('xs:dateTime(.)', DateTime10(1969, 7, 20, 20, 18), context=context)
+        context.item = TextAttributeNode('a', str(DateTime(1969, 7, 20, 20, 18)))
+        self.check_value('xs:dateTime(.)', DateTime(1969, 7, 20, 20, 18), context=context)
 
-        context.item = AttributeNode('a', 'true')
+        context.item = TextAttributeNode('a', 'true')
         self.check_value('xs:dateTime(.)', ValueError, context=context)
 
-        context.item = DateTime10(1969, 7, 20, 20, 18)
-        self.check_value('xs:dateTime(.)', DateTime10(1969, 7, 20, 20, 18), context=context)
+        context.item = DateTime(1969, 7, 20, 20, 18)
+        self.check_value('xs:dateTime(.)', DateTime(1969, 7, 20, 20, 18), context=context)
 
     def test_datetimestamp_constructor(self):
         tz0 = Timezone(datetime.timedelta(hours=7, minutes=0))
@@ -414,6 +435,12 @@ class XPath2ConstructorsTest(xpath_test_class.XPathTestCase):
         self.check_value('xs:date(@a)', Date10(2017, 1, 19), context=context)
 
         class DummyXsdDateType(xpath_test_class.DummyXsdType):
+            name = local_name = None
+            xsd_version = '1.0'
+
+            def is_list(self): pass
+            def is_union(self): pass
+
             def is_simple(self):
                 return True
 
@@ -421,16 +448,16 @@ class XPath2ConstructorsTest(xpath_test_class.XPathTestCase):
                 return Date10.fromstring(obj)
 
             def validate(self, obj, *args, **kwargs):
-                if not isinstance(obj, Date10):
-                    raise TypeError()
+                Date10.validate(obj)
 
-        context.item = AttributeNode('a', 'true', xsd_type=DummyXsdDateType())
-        self.check_value('xs:date(.)', TypeError, context=context)
+        context.item = TextAttributeNode('a', 'true')
+        context.item.xsd_type = DummyXsdDateType()
+        self.check_value('xs:date(.)', ValueError, context=context)
 
-        context.item = AttributeNode('a', str(Date10(2017, 1, 19)))
+        context.item = TextAttributeNode('a', str(Date10(2017, 1, 19)))
         self.check_value('xs:date(.)', Date10(2017, 1, 19), context=context)
 
-        context.item = AttributeNode('a', 'true')
+        context.item = TextAttributeNode('a', 'true')
         self.check_value('xs:date(.)', ValueError, context=context)
 
         root = self.etree.XML("<root>2017-10-02</root>")
@@ -618,34 +645,34 @@ class XPath2ConstructorsTest(xpath_test_class.XPathTestCase):
 
     def test_hex_binary_constructor(self):
         self.check_value('xs:hexBinary(())', [])
-        self.check_value('xs:hexBinary("84")', b'84')
-        self.check_value('xs:hexBinary(xs:hexBinary("84"))', b'84')
+        self.check_value('xs:hexBinary("84")', HexBinary(b'84'))
+        self.check_value('xs:hexBinary(xs:hexBinary("84"))', HexBinary(b'84'))
         self.wrong_type('xs:hexBinary(12)')
 
         root = self.etree.XML('<root a="84"/>')
         context = XPathContext(root)
-        self.check_value('xs:hexBinary(@a)', b'84', context=context)
+        self.check_value('xs:hexBinary(@a)', HexBinary('84'), context=context)
 
         context.item = UntypedAtomic('84')
-        self.check_value('xs:hexBinary(.)', b'84', context=context)
+        self.check_value('xs:hexBinary(.)', HexBinary('84'), context=context)
 
         context.item = '84'
-        self.check_value('xs:hexBinary(.)', b'84', context=context)
+        self.check_value('xs:hexBinary(.)', HexBinary('84'), context=context)
 
         context.item = b'84'
-        self.check_value('xs:hexBinary(.)', b'84', context=context)
+        self.check_value('xs:hexBinary(.)', HexBinary('84'), context=context)
 
         context.item = b'XY'
         self.check_value('xs:hexBinary(.)', ValueError, context=context)
 
         context.item = b'F859'
-        self.check_value('xs:hexBinary(.)', b'F859', context=context)
+        self.check_value('xs:hexBinary(.)', HexBinary(b'F859'), context=context)
 
     def test_base64_binary_constructor(self):
         self.check_value('xs:base64Binary(())', [])
-        self.check_value('xs:base64Binary("ODQ=")', b'ODQ=')
-        self.check_value('xs:base64Binary(xs:base64Binary("ODQ="))', b'ODQ=')
-        self.check_value('xs:base64Binary("YWJjZWZnaGk=")', b'YWJjZWZnaGk=')
+        self.check_value('xs:base64Binary("ODQ=")', Base64Binary(b'ODQ='))
+        self.check_value('xs:base64Binary(xs:base64Binary("ODQ="))', Base64Binary(b'ODQ='))
+        self.check_value('xs:base64Binary("YWJjZWZnaGk=")', Base64Binary(b'YWJjZWZnaGk='))
 
         self.wrong_value('xs:base64Binary("xyz")')
         self.wrong_value('xs:base64Binary("\u0411")')
@@ -654,16 +681,16 @@ class XPath2ConstructorsTest(xpath_test_class.XPathTestCase):
 
         root = self.etree.XML('<root a="YWJjZWZnaGk="/>')
         context = XPathContext(root)
-        self.check_value('xs:base64Binary(@a)', b'YWJjZWZnaGk=', context=context)
+        self.check_value('xs:base64Binary(@a)', Base64Binary(b'YWJjZWZnaGk='), context=context)
 
         context.item = UntypedAtomic('YWJjZWZnaGk=')
-        self.check_value('xs:base64Binary(.)', b'YWJjZWZnaGk=', context=context)
+        self.check_value('xs:base64Binary(.)', Base64Binary(b'YWJjZWZnaGk='), context=context)
 
         context.item = b'abcefghi'  # Don't change, it can be an encoded value.
-        self.check_value('xs:base64Binary(.)', b'abcefghi', context=context)
+        self.check_value('xs:base64Binary(.)', Base64Binary(b'abcefghi'), context=context)
 
         context.item = b'YWJjZWZnaGlq'
-        self.check_value('xs:base64Binary(.)', b'YWJjZWZnaGlq', context=context)
+        self.check_value('xs:base64Binary(.)', Base64Binary(b'YWJjZWZnaGlq'), context=context)
 
     def test_untyped_atomic_constructor(self):
         self.check_value('xs:untypedAtomic(())', [])
@@ -681,6 +708,25 @@ class XPath2ConstructorsTest(xpath_test_class.XPathTestCase):
         self.wrong_type('xs:NOTATION(())', 'XPST0017',
                         'no constructor function exists for xs:NOTATION')
         self.wrong_name('"A120" castable as xs:NOTATION', 'XPST0080')
+
+    def test_missing_context_on_namespaced_name__issue_068(self):
+        namespaces = {
+            'test': "urn:example:names:common-test-names"
+        }
+
+        root = self.etree.XML("""
+        <A xmlns:test="urn:example:names:common-test-names">
+            <B>
+                <test:number>1</test:number>
+            </B>
+        </A>
+        """)
+
+        context_node = select(root, "B", namespaces=namespaces)[0]
+        result = select(root, "xs:decimal(./test:number)", namespaces, item=context_node)
+        self.assertEqual(result, 1)
+        result = select(root, "xs:decimal(test:number)", namespaces, item=context_node)
+        self.assertEqual(result, 1)
 
 
 @unittest.skipIf(lxml_etree is None, "The lxml library is not installed")

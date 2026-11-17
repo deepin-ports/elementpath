@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c), 2018-2021, SISSA (International School for Advanced Studies).
+# Copyright (c), 2018-2026, SISSA (International School for Advanced Studies).
 # All rights reserved.
 # This file is distributed under the terms of the MIT License.
 # See the file 'LICENSE' in the root directory of the present
@@ -25,29 +25,37 @@ import locale
 import os
 from decimal import Decimal
 from textwrap import dedent
+import xml.etree.ElementTree as ET
+from types import ModuleType
 
-try:
-    import lxml.etree as lxml_etree
-except ImportError:
-    lxml_etree = None
-
-try:
-    import xmlschema
-except ImportError:
-    xmlschema = None
-else:
-    xmlschema.XMLSchema.meta_schema.build()
-
-from elementpath import XPath2Parser, XPathContext, MissingContextError, \
-    ElementNode, select, iter_select
-from elementpath.datatypes import xsd10_atomic_types, xsd11_atomic_types, DateTime, \
-    Date, Time, Timezone, DayTimeDuration, YearMonthDuration, UntypedAtomic, QName
-from elementpath.helpers import get_locale_category
+from elementpath import XPath2Parser, XPathContext, XPathSchemaContext, \
+    MissingContextError, ElementNode, select, iter_select, get_node_tree, XPathFunction
+from elementpath.datatypes import builtin_atomic_types, DateTime, Date, Date10, \
+    Time, Timezone, DayTimeDuration, YearMonthDuration, UntypedAtomic, QName
+from elementpath.namespaces import XPATH_FUNCTIONS_NAMESPACE
+from elementpath.collations import get_locale_category
+from elementpath.sequence_types import is_instance
+from elementpath.xpath_tokens import ProxyToken
 
 try:
     from tests import test_xpath1_parser
 except ImportError:
     import test_xpath1_parser
+
+try:
+    import lxml.etree as lxml_etree
+    import lxml.html as lxml_html
+except ImportError:
+    lxml_etree: ModuleType | None = None
+    lxml_html: ModuleType | None = None
+
+try:
+    import xmlschema
+except ImportError:
+    xmlschema: ModuleType | None = None
+else:
+    xmlschema.XMLSchema10.meta_schema.build()
+    xmlschema.XMLSchema11.meta_schema.build()
 
 
 def get_sequence_type(value, xsd_version='1.0'):
@@ -73,19 +81,17 @@ def get_sequence_type(value, xsd_version='1.0'):
         if QName.is_valid(value) and ':' in str(value):
             return 'xs:QName'
 
-        if xsd_version == '1.0':
-            atomic_types = xsd10_atomic_types
-        else:
-            atomic_types = xsd11_atomic_types
-            if atomic_types['dateTimeStamp'].is_valid(value):
+        if xsd_version == '1.1':
+            if builtin_atomic_types['xs:dateTimeStamp'].is_valid(value):
                 return 'xs:dateTimeStamp'
 
-        for type_name in ['string', 'boolean', 'decimal', 'float', 'double',
-                          'date', 'dateTime', 'gDay', 'gMonth', 'gMonthDay', 'anyURI',
-                          'gYear', 'gYearMonth', 'time', 'duration', 'dayTimeDuration',
-                          'yearMonthDuration', 'base64Binary', 'hexBinary']:
-            if atomic_types[type_name].is_valid(value):
-                return 'xs:%s' % type_name
+        for st in ['xs:string', 'xs:boolean', 'xs:decimal', 'xs:float', 'xs:double',
+                   'xs:date', 'xs:dateTime', 'xs:gDay', 'xs:gMonth', 'xs:gMonthDay',
+                   'xs:anyURI', 'xs:gYear', 'xs:gYearMonth', 'xs:time', 'xs:duration',
+                   'xs:dayTimeDuration', 'xs:yearMonthDuration', 'xs:base64Binary',
+                   'xs:hexBinary']:
+            if builtin_atomic_types[st].is_valid(value):
+                return st
 
     raise ValueError("Inconsistent sequence type for {!r}".format(value))
 
@@ -107,63 +113,33 @@ class XPath2ParserTest(test_xpath1_parser.XPath1ParserTest):
                 if self.current_env_vars[v] is not None:
                     os.environ[v] = self.current_env_vars[v]
 
-    def test_is_sequence_type_method(self):
-        self.assertTrue(self.parser.is_sequence_type('empty-sequence()'))
-        self.assertTrue(self.parser.is_sequence_type('xs:string'))
-        self.assertTrue(self.parser.is_sequence_type('xs:float+'))
-        self.assertTrue(self.parser.is_sequence_type('element()*'))
-        self.assertTrue(self.parser.is_sequence_type('item()?'))
-        self.assertTrue(self.parser.is_sequence_type('xs:untypedAtomic+'))
+    @unittest.skipIf(xmlschema is None, "xmlschema library is not installed!")
+    def test_is_instance_function_with_schema(self):
+        schema = xmlschema.XMLSchema("""
+            <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+              <xs:simpleType name="myInt">
+                <xs:restriction base="xs:int"/>
+              </xs:simpleType>
+            </xs:schema>""")
 
-        self.assertFalse(self.parser.is_sequence_type(10))
-        self.assertFalse(self.parser.is_sequence_type(''))
-        self.assertFalse(self.parser.is_sequence_type('empty-sequence()*'))
-        self.assertFalse(self.parser.is_sequence_type('unknown'))
-        self.assertFalse(self.parser.is_sequence_type('unknown?'))
-        self.assertFalse(self.parser.is_sequence_type('tns0:unknown'))
-
-        self.assertTrue(self.parser.is_sequence_type(' element( ) '))
-        self.assertTrue(self.parser.is_sequence_type(' element( * ) '))
-        self.assertFalse(self.parser.is_sequence_type(' element( *, * ) '))
-        self.assertTrue(self.parser.is_sequence_type('element(A)'))
-        self.assertTrue(self.parser.is_sequence_type('element(A, xs:date)'))
-        self.assertTrue(self.parser.is_sequence_type('element(*, xs:date)'))
-        self.assertFalse(self.parser.is_sequence_type('element(A, B, xs:date)'))
-
-        if self.parser.version >= '3.0':
-            self.assertTrue(self.parser.is_sequence_type('function(*)'))
-        else:
-            self.assertFalse(self.parser.is_sequence_type('function(*)'))
-
-    def test_match_sequence_type_method(self):
-        self.assertTrue(self.parser.match_sequence_type(None, 'empty-sequence()'))
-        self.assertTrue(self.parser.match_sequence_type([], 'empty-sequence()'))
-        self.assertFalse(self.parser.match_sequence_type('', 'empty-sequence()'))
-
-        self.assertFalse(self.parser.match_sequence_type('', 'empty-sequence()'))
-
-        context = XPathContext(self.etree.XML('<root><e1/><e2/><e3/></root>'))
-        root = context.root
-        self.assertTrue(self.parser.match_sequence_type(root, 'element()'))
-        self.assertTrue(self.parser.match_sequence_type([root], 'element()'))
-        self.assertTrue(self.parser.match_sequence_type(root, 'element()', '?'))
-        self.assertTrue(self.parser.match_sequence_type(root, 'element()', '+'))
-        self.assertTrue(self.parser.match_sequence_type(root, 'element()', '*'))
-        self.assertFalse(self.parser.match_sequence_type(root[:], 'element()'))
-        self.assertFalse(self.parser.match_sequence_type(root[:], 'element()', '?'))
-        self.assertTrue(self.parser.match_sequence_type(root[:], 'element()', '+'))
-        self.assertTrue(self.parser.match_sequence_type(root[:], 'element()', '*'))
-
-        self.assertTrue(self.parser.match_sequence_type(UntypedAtomic(1), 'xs:untypedAtomic'))
-        self.assertFalse(self.parser.match_sequence_type(1, 'xs:untypedAtomic'))
-
-        self.assertTrue(self.parser.match_sequence_type('1', 'xs:string'))
-        self.assertFalse(self.parser.match_sequence_type(1, 'xs:string'))
-        self.assertFalse(self.parser.match_sequence_type('1', 'xs:unknown'))
-        self.assertFalse(self.parser.match_sequence_type('1', 'tns0:string'))
+        self.parser.schema = xmlschema.xpath.XMLSchemaProxy(schema)
+        try:
+            self.assertFalse(is_instance(1.0, 'myInt', self.parser))
+            self.assertTrue(is_instance(1, 'myInt', self.parser))
+            with self.assertRaises(KeyError):
+                is_instance(1.0, 'dType', self.parser)
+        finally:
+            self.parser.schema = None
 
     def test_variable_reference(self):
         root = self.etree.XML('<a><b1/><b2/></a>')
+
+        token = self.parser.parse('$var1')
+        self.assertEqual(token.source, '$var1')
+        self.assertEqual(
+            repr(token), f"<{token.__class__.__name__} object at {hex(id(token))}>"
+        )
+        self.assertEqual(str(token), '$var1 variable')
 
         context = XPathContext(root=root, variables={'var1': root[0]})
         self.check_value('$var1', context.root[0], context=context)
@@ -225,9 +201,21 @@ class XPath2ParserTest(test_xpath1_parser.XPath1ParserTest):
 
     def test_token_source(self):
         super(XPath2ParserTest, self).test_token_source()
-        self.check_source("(5, 6) instance of xs:integer+", '(5, 6) instance of xs:integer+')
-        self.check_source("$myaddress treat as element(*, USAddress)",
-                          "$myaddress treat as element(*, USAddress)")
+        self.check_source("(5, 6) instance of xs:integer+")
+        self.check_source("$myaddress treat as element(*, USAddress)")
+        self.check_source("(10, 1 to 4)")
+        self.check_source("if (true()) then /A/B1 else /A/B2")
+        self.check_source("every $part in /parts/part satisfies $part/@discounted")
+        self.check_source("some $x in (1, 2, 3), $y in (2, 3, 4) satisfies $x + $y = 4")
+        self.check_source("-3.5 idiv -2")
+        self.check_source("xs:float('1e0') eq 1e2", "xs:float('1e0') eq 100.0")
+        self.check_source("sum(//price[../available = false()])")
+        self.check_source("self::node()")
+        self.check_source('child (: nasty (:nested :) axis comment :) ::B1', 'child::B1')
+        self.check_source("() cast as xs:integer?")
+        self.check_source("() treat as empty-sequence()")
+        self.check_source("'NaN' castable as xs:double")
+        self.check_source("(1, fn:round-half-to-even(()), 7)")
 
     def test_xpath_comments(self):
         self.wrong_syntax("(: this is a comment :)")
@@ -555,20 +543,30 @@ class XPath2ParserTest(test_xpath1_parser.XPath1ParserTest):
 
             with self.schema_bound_parser(schema.elements['root'].xpath_proxy):
                 root = self.etree.XML('<root>11</root>')
-                self.check_value('. le 10', False, context=XPathContext(root))
-                self.check_value('. le 20', True, context=XPathContext(root))
+                context = XPathContext(root, schema=self.parser.schema)
+                self.check_value('. le 10', False, context)
+                self.check_value('. le 20', True, context)
 
                 root = self.etree.XML('<root>eleven</root>')
-                self.wrong_type('. le 10', 'XPDY0050', context=XPathContext(root))
+                context = XPathContext(root, schema=self.parser.schema)
+                self.wrong_value('. le 10', 'FORG0001', context=context)
 
                 root = self.etree.XML('<value>12</value>')
+                context = XPathContext(root, schema=self.parser.schema)
                 with self.assertRaises(TypeError) as err:
-                    self.check_value('. le "11"', context=XPathContext(root))
+                    self.check_value('. le "11"', context)
                 self.assertIn('XPTY0004', str(err.exception))  # Static schema context error
 
-                with self.assertRaises(TypeError) as err:
-                    self.check_value('. le 10', context=XPathContext(root))
-                self.assertIn('XPTY0004', str(err.exception))  # Dynamic context error
+                self.check_value('. le 10', False, context=context)
+
+                # Schema information persists on parser (will be removed in v5.0)
+                context = XPathContext(root, schema=self.parser.schema)
+                self.check_value('. le 10', False, context=context)
+
+            context = XPathContext(root)
+            with self.assertRaises(TypeError) as err:
+                self.check_value('. le 10', context=context)
+            self.assertIn('XPTY0004', str(err.exception))  # Dynamic context error
 
             schema = xmlschema.XMLSchema("""
                 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
@@ -586,6 +584,19 @@ class XPath2ParserTest(test_xpath1_parser.XPath1ParserTest):
         self.check_selector("a[2] = (1 to 10, 30)", root, True)
         self.check_selector("a[3] = (1 to 10, 30)", root, True)
         self.check_selector("a[4] = (1 to 10, 30)", root, False)
+
+    @unittest.skipIf(xmlschema is None, "xmlschema library is not installed!")
+    def test_namespace_axis_on_schema_context(self):
+        schema = xmlschema.XMLSchema(dedent("""\n
+            <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                <xs:simpleType name="floatType">
+                    <xs:restriction base="xs:double"/>
+                </xs:simpleType>
+            </xs:schema>"""))
+
+        context = XPathSchemaContext(schema)
+        token = self.parser.parse('/namespace::*')
+        self.assertEqual(token.evaluate(context), [])
 
     def test_unknown_axis(self):
         self.wrong_syntax('unknown::node()', 'XPST0003')
@@ -790,10 +801,12 @@ class XPath2ParserTest(test_xpath1_parser.XPath1ParserTest):
     def test_attribute_accessor(self):
         root = self.etree.XML('<A a="10" b="20">text<B/>tail<B/></A>')
         context = XPathContext(root)
-        self.check_select("attribute()", {'10', '20'}, context)
-        self.check_select("attribute(*)", {'10', '20'}, context)
-        self.check_select("attribute(a)", ['10'], context)
-        self.check_select("attribute(a, xs:int)", ['10'], context)
+        a = context.root.attributes[0]
+        b = context.root.attributes[1]
+        self.check_select("attribute()", [a, b], context)
+        self.check_select("attribute(*)", [a, b], context)
+        self.check_select("attribute(a)", [a], context)
+        self.check_select("attribute(a, xs:int)", [a], context)
 
         if xmlschema is not None:
             schema = xmlschema.XMLSchema("""
@@ -805,9 +818,13 @@ class XPath2ParserTest(test_xpath1_parser.XPath1ParserTest):
                   </xs:complexType>
                 </xs:schema>""")
 
-            with self.schema_bound_parser(schema.elements['A'].xpath_proxy):
-                self.check_select("attribute(a, xs:int)", ['10'], context)
-                self.check_select("attribute(*, xs:int)", {'10', '20'}, context)
+            schema_proxy = schema.elements['A'].xpath_proxy
+            with self.schema_bound_parser(schema_proxy):
+                context = XPathContext(root, schema=schema_proxy)
+                a = context.root.attributes[0]
+                b = context.root.attributes[1]
+                self.check_select("attribute(a, xs:int)", [a], context)
+                self.check_select("attribute(*, xs:int)", [a, b], context)
                 self.check_select("attribute(a, xs:string)", [], context)
                 self.check_select("attribute(*, xs:string)", [], context)
 
@@ -817,7 +834,7 @@ class XPath2ParserTest(test_xpath1_parser.XPath1ParserTest):
 
         context = XPathContext(root=element)
         self.check_select("self::node()", [context.root], context)
-        self.check_select("self::attribute()", ['0212349350'], context)
+        self.check_select("self::attribute()", [context.root.attributes[0]], context)
 
         context.item = 7
         self.check_select("node()", [], context)
@@ -963,7 +980,7 @@ class XPath2ParserTest(test_xpath1_parser.XPath1ParserTest):
 
         context = XPathContext(element)
         self.check_value(". instance of element()", True, context)
-        context.item = None
+        context.item = "foo"
         self.check_value(". instance of element()", False, context)
 
         self.check_value("(5, 6) instance of xs:integer", False)
@@ -973,7 +990,10 @@ class XPath2ParserTest(test_xpath1_parser.XPath1ParserTest):
         self.check_value("5 instance of empty-sequence()", False)
         self.check_value("() instance of empty-sequence()", True)
 
-        self.wrong_syntax("5 instance of unknown()", 'XPST0003', "unknown function 'unknown'")
+        self.wrong_syntax("5 instance of unknown()",
+                          'XPST0003', "unexpected parenthesized expression")
+        self.wrong_syntax("5 instance of unknown::node()",
+                          'XPST0003', "unexpected '::' symbol")
         self.wrong_syntax("1e3 instance of empty-sequence()(", 'XPST0003')
 
         # Test dynamic evaluation error on prefixed name
@@ -1168,12 +1188,13 @@ class XPath2ParserTest(test_xpath1_parser.XPath1ParserTest):
         self.check_value('for', [context.root.getroot()], context)
 
     def test_auxiliary_tokens(self):
+        # Tokens are parsed as names, so raise at evaluation if the contest is None
         self.check_raise('as', MissingContextError)
         self.check_raise('of', MissingContextError)
 
         context = XPathContext(self.etree.XML('<root/>'))
-        self.check_raise('as', MissingContextError, context=context)
-        self.check_raise('of', MissingContextError, context=context)
+        self.check_value('as', expected=None, context=context)
+        self.check_value('of', expected=None, context=context)
 
     def test_function_namespace(self):
         function_namespace = "http://xpath.test/fn/xpath-functions"
@@ -1245,7 +1266,7 @@ class XPath2ParserTest(test_xpath1_parser.XPath1ParserTest):
         locale_collation = get_locale_category(locale.LC_COLLATE)
         if locale_collation == 'en_US.UTF-8':
             locale_collation = "http://www.w3.org/2005/xpath-functions/collation/codepoint"
-        self.assertEqual(self.parser.__class__().default_collation, locale_collation)
+            self.assertEqual(self.parser.__class__().default_collation, locale_collation)
 
         parser = self.parser.__class__(default_collation='it_IT.UTF-8')
         self.assertEqual(parser.default_collation, 'it_IT.UTF-8')
@@ -1266,10 +1287,339 @@ class XPath2ParserTest(test_xpath1_parser.XPath1ParserTest):
         self.check_selector('//@*/local-name()', root, result)
         self.check_selector('//@*/name()', root, result)
 
+    def test_external_function_registration__issue_099(self):
+        parser = self.parser.__class__(namespaces={'tns0': 'https://elementpath.test/tns0'})
+
+        def foo(x):
+            return str(x)
+
+        self.assertIs(parser.symbol_table, parser.__class__.symbol_table)
+        parser.external_function(foo)
+        self.assertIsNot(parser.symbol_table, parser.__class__.symbol_table)
+
+        self.assertIn('foo', parser.symbol_table)
+        self.assertNotIn(f'{{{XPATH_FUNCTIONS_NAMESPACE}}}foo', parser.symbol_table)
+
+        token_class = parser.symbol_table['foo']
+        self.assertFalse(issubclass(token_class, ProxyToken))
+        self.assertTrue(issubclass(token_class, XPathFunction))
+
+        assert issubclass(token_class, XPathFunction)
+        self.assertEqual(token_class.lookup_name, 'foo')
+        self.assertEqual(token_class.nargs, 1)
+
+        token = parser.parse('foo(8)')
+        self.assertEqual(token.evaluate(), '8')
+
+        token = parser.parse('fn:foo("abc")')
+        self.assertEqual(token.evaluate(), 'abc')
+
+        with self.assertRaises(ValueError) as ctx:
+            parser.external_function(foo)
+        self.assertEqual(str(ctx.exception), "function 'fn:foo' is already registered")
+
+        parser.external_function(foo, name='bar')
+        token = parser.parse('bar(99)')
+        self.assertEqual(token.evaluate(), '99')
+
+        with self.assertRaises(ValueError) as ctx:
+            parser.external_function(foo)
+        self.assertEqual(str(ctx.exception), "function 'fn:foo' is already registered")
+
+        with self.assertRaises(ValueError) as ctx:
+            parser.external_function(foo, 'concat')
+        self.assertEqual(str(ctx.exception), "function 'fn:concat' is already registered")
+
+        if self.parser.version >= '3.0':
+            with self.assertRaises(ValueError) as ctx:
+                parser.external_function(foo, 'pi', 'math')
+            self.assertEqual(str(ctx.exception), "function 'math:pi' is already registered")
+
+        with self.assertRaises(ValueError) as ctx:
+            parser.external_function(foo, 'some')
+        self.assertIn("'some' name collides with <class", str(ctx.exception))
+
+        def foo2(x, y):
+            return str(x) + str(y)
+
+        parser.external_function(foo2, 'foo', prefix='tns0')
+
+        self.assertIn('foo', parser.symbol_table)
+        self.assertIn(f'{{{XPATH_FUNCTIONS_NAMESPACE}}}foo', parser.symbol_table)
+        self.assertIn('{https://elementpath.test/tns0}foo', parser.symbol_table)
+
+        token_class = parser.symbol_table['foo']
+        self.assertTrue(issubclass(token_class, ProxyToken))
+        self.assertFalse(issubclass(token_class, XPathFunction))
+
+        assert issubclass(token_class, ProxyToken)
+        self.assertEqual(token_class.lookup_name, 'foo')
+        self.assertFalse(hasattr(token_class, 'nargs'))
+        self.assertIsNone(token_class.namespace)
+
+        token_class = parser.symbol_table['{https://elementpath.test/tns0}foo']
+        self.assertTrue(issubclass(token_class, XPathFunction))
+
+        assert issubclass(token_class, XPathFunction)
+        self.assertEqual(token_class.lookup_name, '{https://elementpath.test/tns0}foo')
+        self.assertEqual(token_class.nargs, 2)
+        self.assertEqual(token_class.namespace, 'https://elementpath.test/tns0')
+
+        with self.assertRaises(ValueError) as ctx:
+            parser.external_function(foo2, 'foo', prefix='tns0')
+        self.assertEqual(str(ctx.exception), "function 'tns0:foo' is already registered")
+
+        token = parser.parse('foo(8)')
+        self.assertEqual(token.evaluate(), '8')
+
+        with self.assertRaises(TypeError) as ctx:
+            parser.parse('tns0:foo(8)')
+        self.assertIn("'tns0:foo' external function: Too few argument", str(ctx.exception))
+
+        token = parser.parse('tns0:foo(8, 9)')
+
+        self.assertEqual(token.evaluate(), '89')
+
+    def test_external_function_arity(self):
+
+        def foo():
+            return 'bar'
+
+        parser = self.parser.__class__()
+        token_class = parser.external_function(foo)
+        self.assertEqual(token_class.nargs, 0)
+        self.assertEqual(parser.parse('foo()').evaluate(), 'bar')
+        self.assertRaises(TypeError, parser.parse, 'foo(1)')
+
+        def foo(x):
+            return str(x)
+
+        parser = self.parser.__class__()
+        token_class = parser.external_function(foo)
+        self.assertEqual(token_class.nargs, 1)
+        self.assertEqual(parser.parse('foo(77)').evaluate(), '77')
+        self.assertRaises(TypeError, parser.parse, 'foo()')
+
+        def foo(x, y):
+            return str(x) + str(y)
+
+        parser = self.parser.__class__()
+        token_class = parser.external_function(foo)
+        self.assertEqual(token_class.nargs, 2)
+        self.assertEqual(parser.parse('foo(77, 88)').evaluate(), '7788')
+        self.assertRaises(TypeError, parser.parse, 'foo()')
+        self.assertRaises(TypeError, parser.parse, 'foo(6)')
+
+        def foo(x, y=0):
+            return str(x) + str(y)
+
+        parser = self.parser.__class__()
+        token_class = parser.external_function(foo)
+        self.assertEqual(token_class.nargs, (1, 2))
+        self.assertEqual(parser.parse('foo(77, 88)').evaluate(), '7788')
+        self.assertEqual(parser.parse('foo(6)').evaluate(), '60')
+        self.assertRaises(TypeError, parser.parse, 'foo()')
+
+        def foo(x=0, y=0):
+            return str(x) + str(y)
+
+        parser = self.parser.__class__()
+        token_class = parser.external_function(foo)
+        self.assertEqual(token_class.nargs, (0, 2))
+        self.assertEqual(parser.parse('foo(77, 88)').evaluate(), '7788')
+        self.assertEqual(parser.parse('foo(6)').evaluate(), '60')
+        self.assertEqual(parser.parse('foo()').evaluate(), '00')
+        self.assertRaises(TypeError, parser.parse, 'foo(1, 2, 3)')
+
+        def foo(x, *args):
+            return str(x) + ''.join(str(a) for a in args)
+
+        parser = self.parser.__class__()
+        token_class = parser.external_function(foo)
+        self.assertEqual(token_class.nargs, (1, None))
+        self.assertEqual(parser.parse('foo(7, 8, 9)').evaluate(), '789')
+        self.assertEqual(parser.parse('foo(6)').evaluate(), '6')
+        self.assertRaises(TypeError, parser.parse, 'foo()')
+
+        def foo(*args):
+            return ''.join(str(a) for a in args)
+
+        parser = self.parser.__class__()
+        token_class = parser.external_function(foo)
+        self.assertIsNone(token_class.nargs)
+        self.assertEqual(parser.parse('foo(7, 8, 9)').evaluate(), '789')
+        self.assertEqual(parser.parse('foo(6)').evaluate(), '6')
+        self.assertRaises(TypeError, parser.parse, 'foo()')
+
+    def test_external_function_arguments(self):
+
+        def foo(x):
+            return str(x)
+
+        parser = self.parser.__class__()
+        token_class = parser.external_function(foo, sequence_types=('xs:integer', 'xs:string'))
+        self.assertEqual(token_class.nargs, 1)
+        self.assertEqual(parser.parse('foo(77)').evaluate(), '77')
+        self.assertRaises(TypeError, parser.parse, 'foo(77.0)')
+
+    def test_external_function_arguments__issue_92(self):
+
+        def select_first(nodes):
+            if not isinstance(nodes, list):
+                return nodes
+            return nodes[0]
+
+        namespaces = {"tst": "http://xmlschema.test/tst"}
+        parser = self.parser.__class__(namespaces)
+
+        fn_select_first = parser.external_function(
+            select_first, name='select-first', prefix='tst',
+            sequence_types=("element()+", "element()")
+        )
+        self.assertEqual(fn_select_first.nargs, 1)
+
+        xml_data = '<container>\n  <test a="1"/>\n  <test/></container>'
+        root = self.etree.XML(xml_data)
+
+        expression = "tst:select-first(//test)"
+        root_token = parser.parse(expression)
+        context = XPathContext(root)
+        result = root_token.get_results(context)
+        self.assertEqual(result, [root[0]])
+
+    @unittest.skipIf(xmlschema is None, "xmlschema library is not installed!")
+    def test_raw_resolution_for_issue_73(self):
+
+        xsd_source = dedent("""\
+        <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+            <xs:element name="values">
+                <xs:complexType>
+                    <xs:choice maxOccurs="unbounded">
+                        <xs:element name="decimal_value" type="xs:decimal"/>
+                        <xs:element name="string_value" type="xs:string"/>
+                        <xs:element name="boolean_value" type="xs:boolean"/>
+                        <xs:element name="datetime_value" type="xs:dateTime"/>
+                        <xs:element name="date_value" type="xs:date"/>
+                    </xs:choice>
+                </xs:complexType>
+            </xs:element>
+        </xs:schema>""")
+
+        xml_source = dedent("""\
+        <values>
+            <decimal_value>3.14</decimal_value>
+            <string_value>foo</string_value>
+            <boolean_value>true</boolean_value>
+            <datetime_value>2018-01-23T12:34:56Z</datetime_value>
+            <date_value>2018-01-23</date_value>
+        </values>""")
+
+        schema = xmlschema.XMLSchema(xsd_source)
+        assert schema.is_valid(xml_source)
+
+        root = ET.fromstring(xml_source)
+
+        root_node = get_node_tree(root)
+        date_node = root_node.elements.get(root[4])
+        assert date_node.name == 'date_value'
+        assert date_node.xsd_type is None
+        assert date_node.typed_value == '2018-01-23'
+
+        schema_proxy = xmlschema.xpath.XMLSchemaProxy(schema)
+        parser = XPath2Parser(schema=schema_proxy)
+
+        assert date_node.xsd_type is None
+        assert date_node.typed_value == '2018-01-23'
+
+        root_token = parser.parse('fn:data(//*)')
+        assert date_node.xsd_type is None
+        assert date_node.typed_value == '2018-01-23'
+
+        context = XPathContext(root_node, schema=schema_proxy)
+        result = root_token.get_results(context)
+
+        assert date_node.typed_value == Date10(2018, 1, 23)
+        assert len(result) == 5
+        assert result[-1] == Date10(2018, 1, 23)
+
+        token = XPath2Parser().parse('fn:data(.)')
+        context = XPathContext(root_node, item=date_node)
+        result = token.get_results(context)
+
+        assert result == [Date10(2018, 1, 23)]
+
+    def test_proxy_token_disambiguation__issue_078(self):
+        root = self.etree.XML(dedent('''\
+            <table frame="all" rowsep="1" colsep="1" id="flowers_table">
+                <title>Flowers</title>
+                <tgroup cols="3">
+                  <colspec colname="c1" colnum="1" colwidth="1.0*"/>
+                  <colspec colname="c2" colnum="2" colwidth="1.0*"/>
+                  <colspec colname="c3" colnum="3" colwidth="1.0*"/>
+                  <thead>
+                    <row>
+                      <entry>Flower</entry>
+                      <entry>Type</entry>
+                    </row>
+                  </thead>
+                  <tbody>
+                    <row>
+                      <entry>Chrysanthemum</entry>
+                      <entry>perennial</entry>
+                      <entry>well drained</entry>
+                    </row>
+                    <row>
+                      <entry>Gardenia</entry>
+                      <entry>perennial</entry>
+                    </row>
+                    <row>
+                      <entry>Gerbera</entry>
+                      <entry>annual</entry>
+                      <entry>sandy, well-drained</entry>
+                    </row>
+                    <row>
+                      <entry>Iris</entry>
+                    </row>
+                  </tbody>
+                </tgroup>
+              </table>'''))
+
+        results = select(root, 'min(.//row/count(entry))', parser=self.parser.__class__)
+        self.assertEqual(results, 1)
+
+    def test_external_function_namespace_registration__issue_099(self):
+        parser = self.parser.__class__({"test": "http://www.test.org/1"})
+        test_elem = ET.Element("{http://www.test.org/1}item1")
+        context = XPathContext(
+            root=ET.Element("{http://www.test.org/1}item"),
+            variables={"result": test_elem}
+        )
+
+        expr = """$result instance of element(test:item1) """
+        root_token = parser.parse(expr)
+        self.assertTrue(root_token.get_results(context))
+
+        def testfunc(root: ElementNode) -> ElementNode:
+            raise NotImplementedError
+
+        parser.external_function(testfunc, "item2", "fn", ("element()", "element()"))
+        root_token = parser.parse(expr)
+        self.assertTrue(root_token.get_results(context))
+
+        parser.external_function(testfunc, "item1", "fn", ("element()", "element()"))
+        root_token = parser.parse(expr)
+        self.assertTrue(root_token.get_results(context))
+
 
 @unittest.skipIf(lxml_etree is None, "The lxml library is not installed")
 class LxmlXPath2ParserTest(XPath2ParserTest):
     etree = lxml_etree
+
+    def test_input_selector(self):
+        body = '<input/>'
+        root = self.etree.fromstring(body, parser=lxml_html.HTMLParser())
+        result = select(root, '//input')
+        self.assertEqual(len(result), 1)
 
 
 if __name__ == '__main__':

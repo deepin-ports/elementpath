@@ -1,5 +1,5 @@
 #
-# Copyright (c), 2018-2020, SISSA (International School for Advanced Studies).
+# Copyright (c), 2018-2026, SISSA (International School for Advanced Studies).
 # All rights reserved.
 # This file is distributed under the terms of the MIT License.
 # See the file 'LICENSE' in the root directory of the present
@@ -7,17 +7,10 @@
 #
 # @author Davide Brunato <brunato@sissa.it>
 #
-import re
-from typing import cast, Dict, Optional, Tuple, MutableMapping, Union
+from typing import cast, Union
 
-NamespacesType = MutableMapping[str, str]
-
-# Regex patterns related to names and namespaces
-NAMESPACE_URI_PATTERN = re.compile(r'{([^}]+)}')
-EXPANDED_NAME_PATTERN = re.compile(
-    r'^(?:{(?P<namespace>[^}]+)})?'
-    r'(?P<local>[^\d\W][\w\-.\u00B7\u0300-\u036F\u0387\u06DD\u06DE\u203F\u2040]*)$',
-)
+from elementpath.aliases import NamespacesType, NsmapType
+from elementpath.helpers import Patterns
 
 # Namespaces
 XML_NAMESPACE = "http://www.w3.org/XML/1998/namespace"
@@ -60,87 +53,147 @@ XSD_STRING = '{%s}string' % XSD_NAMESPACE
 XSD_FLOAT = '{%s}float' % XSD_NAMESPACE
 XSD_DOUBLE = '{%s}double' % XSD_NAMESPACE
 XSD_DECIMAL = '{%s}decimal' % XSD_NAMESPACE
+XSD_DATETIME_STAMP = '{%s}dateTimeStamp' % XSD_NAMESPACE
 
 # XPath type labels defined in XSD namespace that are not XSD builtin types
 XSD_UNTYPED = '{%s}untyped' % XSD_NAMESPACE
 XSD_UNTYPED_ATOMIC = '{%s}untypedAtomic' % XSD_NAMESPACE
 XSD_ERROR = '{%s}error' % XSD_NAMESPACE
+XSD_NUMERIC = '{%s}numeric' % XSD_NAMESPACE
 
 
 def get_namespace(name: str) -> str:
     try:
-        return NAMESPACE_URI_PATTERN.match(name).group(1)  # type: ignore[union-attr]
+        return Patterns.namespace_uri.match(name).group(1)  # type: ignore[union-attr]
     except AttributeError:
         return ''
 
 
-def split_expanded_name(name: str) -> Tuple[str, str]:
-    match = EXPANDED_NAME_PATTERN.match(name)
+def split_expanded_name(name: str) -> tuple[str, str]:
+    match = Patterns.expanded_name.match(name)
     if match is None:
-        raise ValueError("{!r} is not an expanded QName".format(name))
+        raise ValueError(f"{name!r} is not an expanded QName")
     namespace, local_name = match.groups()
     return namespace or '', local_name
 
 
-def get_prefixed_name(
-        qname: str, namespaces: Union[Dict[str, str], Dict[Optional[str], str]]) -> str:
+def get_prefixed_name(name: str, namespaces: Union[NamespacesType, NsmapType]) -> str:
     """
     Get the prefixed form of a QName, using a namespace map.
 
-    :param qname: an extended QName or a local name or a prefixed QName.
+    :param name: an extended QName or a local name or a prefixed QName.
     :param namespaces: a dictionary with a map from prefixes to namespace URIs.
     """
     try:
-        if qname[0] == '{':
-            ns_uri, local_name = qname[1:].split('}')
-        elif qname[1] == '{' and qname[0] == 'Q':
-            ns_uri, local_name = qname[2:].split('}')
+        if not name.startswith(('{', 'Q{')):
+            return name
+        elif name[0] == '{':
+            ns_uri, local_name = name[1:].split('}')
         else:
-            return qname
-    except IndexError:
-        return qname
+            ns_uri, local_name = name[2:].split('}')
     except (ValueError, TypeError):
-        raise ValueError("{!r} is not a QName".format(qname))
+        raise ValueError(f"{name!r} is not a QName")
 
     for prefix, uri in sorted(namespaces.items(), reverse=True,
                               key=lambda x: x if x[0] is not None else ('', x[1])):
         if uri == ns_uri:
-            return '%s:%s' % (prefix, local_name) if prefix else local_name
+            return f'{prefix}:{local_name}' if prefix else local_name
     else:
-        return qname
+        if ns_uri == XML_NAMESPACE:
+            return f'xml:{local_name}'
+        return name
 
 
-def get_expanded_name(
-        qname: str, namespaces: Union[Dict[str, str], Dict[Optional[str], str]]) -> str:
+def get_expanded_name(name: str, namespaces: Union[NamespacesType, NsmapType]) -> str:
     """
     Get the expanded form of a QName, using a namespace map.
     Local names are mapped to the default namespace.
 
-    :param qname: a prefixed QName or a local name or an extended QName.
+    :param name: a prefixed QName or a local name or an extended QName.
     :param namespaces: a dictionary with a map from prefixes to namespace URIs.
     :return: the expanded format of a QName or a local name.
     """
-    try:
-        if qname[0] == '{' or qname[1] == '{' and qname[0] == 'Q':
-            return qname
-    except IndexError:
-        return qname
+    if not name or name.startswith('{'):
+        return name
+    elif name.startswith('Q{'):
+        return name[1:]
 
     try:
-        prefix, local_name = qname.split(':')
+        prefix, local_name = name.split(':')
     except ValueError:
-        if ':' in qname:
-            raise ValueError("wrong format for prefixed QName %r" % qname)
+        if ':' in name:
+            raise ValueError(f"wrong format for prefixed QName {name!r}")
         elif '' in namespaces:
             uri = namespaces['']
         elif None in namespaces:
-            uri = cast(Dict[Optional[str], str], namespaces)[None]  # lxml nsmap
+            uri = cast(NsmapType, namespaces)[None]  # lxml nsmap
         else:
-            return qname
+            return name
 
-        return '{%s}%s' % (uri, qname) if uri else qname
+        return f'{{{uri}}}{name}' if uri else name
     else:
         if not prefix or not local_name:
-            raise ValueError("wrong format for reference name %r" % qname)
+            raise ValueError(f"wrong format for reference name {name!r}")
+        elif prefix == 'xml':
+            return f'{{{XML_NAMESPACE}}}{local_name}'
+
         uri = namespaces[prefix]
-        return '{%s}%s' % (uri, local_name) if uri else local_name
+        if not uri:
+            raise ValueError(f"prefix {prefix!r} is mapped to an empty URI")
+        return f'{{{uri}}}{local_name}'
+
+
+def get_expanded_path(path: str, namespaces: Union[NamespacesType, NsmapType]) -> str:
+    """
+    Similar to get_expanded_name, but can be applied to the whole path.
+    """
+    def expand_chunk(chunk: str) -> None:
+        p = 0
+        for m in Patterns.unbound_qname.finditer(chunk):
+            s, e = m.span()
+            if p < s:
+                if ':' in chunk[p:s]:
+                    idx = pos + p + chunk[p:s].index(':')
+                    raise ValueError(f'unexpected colon character at position {idx}')
+                chunks.append(chunk[p:s])
+
+            prefix, local_part = m.groups()
+            if prefix:
+                uri = namespaces[prefix]
+                chunks.append(f'{{{uri}}}{local_part}')
+            elif default_ns:
+                uri = default_ns
+                chunks.append(f'{{{uri}}}{local_part}')
+            else:
+                chunks.append(local_part)
+
+            p = e
+        else:
+            if p < len(chunk):
+                if ':' in chunk[p:]:
+                    idx = pos + p + chunk[p:].index(':')
+                    raise ValueError(f'unexpected colon character at position {idx}')
+                chunks.append(chunk[p:])
+
+    chunks: list[str] = []
+    pos = 0
+    if None in namespaces:
+        default_ns = namespaces[None]  # type: ignore[index, unused-ignore]
+    else:
+        default_ns = namespaces.get('', '')
+
+    for match in Patterns.unbound_expanded_name.finditer(path):
+        start, end = match.span()
+        if pos < start:
+            expand_chunk(path[pos:start])
+
+        if path[start] == 'Q':
+            chunks.append(path[start+1:end])
+        else:
+            chunks.append(path[start:end])
+        pos = end
+    else:
+        if pos < len(path):
+            expand_chunk(path[pos:])
+
+    return ''.join(chunks)

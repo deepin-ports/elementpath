@@ -1,5 +1,5 @@
 #
-# Copyright (c), 2016-2020, SISSA (International School for Advanced Studies).
+# Copyright (c), 2016-2026, SISSA (International School for Advanced Studies).
 # All rights reserved.
 # This file is distributed under the terms of the MIT License.
 # See the file 'LICENSE' in the root directory of the present
@@ -10,71 +10,46 @@
 """
 A unified loader module for ElementTree with a safe parser and helper functions.
 """
-import sys
 import re
 import io
-from typing import cast, Any, Counter, Iterator, Optional, MutableMapping, \
-    Tuple, Union
-from .protocols import ElementProtocol, DocumentProtocol
+import importlib
+from collections import Counter
+from collections.abc import Iterator, MutableMapping
+from pyexpat import XMLParserType
+from typing import cast, Any, Optional, Union
+from xml.dom import pulldom
+from xml.etree import ElementTree
+from xml.sax import SAXParseException
+from xml.sax import expatreader  # type: ignore[attr-defined, unused-ignore]
 
-###
-# Programmatic import of the pure Python ElementTree module.
-#
-# In Python 3 the pure Python implementation is overwritten by the C module API,
-# so use a programmatic re-import to obtain the pure Python module, necessary for
-# defining a safer XMLParser.
+from elementpath.protocols import ElementProtocol, DocumentProtocol, EtreeElementProtocol, \
+    LxmlElementProtocol
+from elementpath.exceptions import XMLResourceForbidden, ElementPathOSError
 
-###
-# Temporary remove the loaded modules
-import xml.etree.ElementTree as ElementTree
-sys.modules.pop('xml.etree.ElementTree')
-_cmod = sys.modules.pop('_elementtree', None)
-
-# Load the pure Python module
-sys.modules['_elementtree'] = None  # type: ignore[assignment]
-import xml.etree.ElementTree as PyElementTree  # noqa
-import xml.etree  # noqa
-
-# Restore original modules
-if _cmod is not None:
-    sys.modules['_elementtree'] = _cmod
-xml.etree.ElementTree = ElementTree
-sys.modules['xml.etree.ElementTree'] = ElementTree
+ElementType = Union[EtreeElementProtocol, LxmlElementProtocol, ElementTree.Element]
 
 
-class SafeXMLParser(PyElementTree.XMLParser):
-    """
-    An XMLParser that forbids entities processing. Drops the *html* argument
-    that is deprecated since version 3.4.
+class SafeExpatParser(expatreader.ExpatParser):  # type: ignore[misc, unused-ignore]
+    _parser: XMLParserType
 
-    :param target: the target object called by the `feed()` method of the \
-    parser, that defaults to `TreeBuilder`.
-    :param encoding: if provided, its value overrides the encoding specified \
-    in the XML file.
-    """
-    def __init__(self, target: Optional[Any] = None, encoding: Optional[str] = None) -> None:
-        super(SafeXMLParser, self).__init__(target=target, encoding=encoding)
-        self.parser.EntityDeclHandler = self.entity_declaration
-        self.parser.UnparsedEntityDeclHandler = self.unparsed_entity_declaration
-        self.parser.ExternalEntityRefHandler = self.external_entity_reference
+    def forbid_entity_declaration(self, name, is_parameter_entity,  # type: ignore
+                                  value, base, sysid, pubid, notation_name):
+        raise XMLResourceForbidden(f"Entities are forbidden (entity_name={name!r})")
 
-    def entity_declaration(self, entity_name, is_parameter_entity, value, base,  # type: ignore
-                           system_id, public_id, notation_name):
-        raise PyElementTree.ParseError(
-            "Entities are forbidden (entity_name={!r})".format(entity_name)
-        )
+    def forbid_unparsed_entity_declaration(self, name, base,  # type: ignore
+                                           sysid, pubid, notation_name):
+        raise XMLResourceForbidden(f"Unparsed entities are forbidden (entity_name={name!r})")
 
-    def unparsed_entity_declaration(self, entity_name, base, system_id,  # type: ignore
-                                    public_id, notation_name):
-        raise PyElementTree.ParseError(
-            "Unparsed entities are forbidden (entity_name={!r})".format(entity_name)
-        )
+    def forbid_external_entity_reference(self, context, base, sysid, pubid):  # type: ignore
+        raise XMLResourceForbidden(
+            f"External references are forbidden (system_id={sysid!r}, public_id={pubid!r})"
+        )  # pragma: no cover
 
-    def external_entity_reference(self, context, base, system_id, public_id):  # type: ignore
-        raise PyElementTree.ParseError(
-            "External references are forbidden (system_id={!r}, "
-            "public_id={!r})".format(system_id, public_id)
-        )  # pragma: no cover (EntityDeclHandler is called before)
+    def reset(self) -> None:
+        super().reset()
+        self._parser.EntityDeclHandler = self.forbid_entity_declaration
+        self._parser.UnparsedEntityDeclHandler = self.forbid_unparsed_entity_declaration
+        self._parser.ExternalEntityRefHandler = self.forbid_external_entity_reference
 
 
 def defuse_xml(xml_source: Union[str, bytes]) -> Union[str, bytes]:
@@ -84,17 +59,15 @@ def defuse_xml(xml_source: Union[str, bytes]) -> Union[str, bytes]:
     else:
         resource = io.BytesIO(xml_source)
 
-    safe_parser = SafeXMLParser(target=PyElementTree.TreeBuilder())
-
+    parser = SafeExpatParser()
     try:
-        for _ in PyElementTree.iterparse(resource, ('start',), safe_parser):
-            break
-    except PyElementTree.ParseError as err:
-        msg = str(err)
-        if "Entities are forbidden" in msg or \
-                "Unparsed entities are forbidden" in msg or \
-                "External references are forbidden" in msg:
-            raise
+        for event, node in pulldom.parse(resource, parser):
+            if event == pulldom.START_ELEMENT:
+                break
+    except SAXParseException:
+        pass  # the purpose is to defuse not to check xml source syntax
+    except OSError as err:
+        raise ElementPathOSError(str(err))
 
     return xml_source
 
@@ -104,7 +77,15 @@ def is_etree_element(obj: Any) -> bool:
 
 
 def is_lxml_etree_element(obj: Any) -> bool:
-    return is_etree_element(obj) and hasattr(obj, 'getparent') and hasattr(obj, 'nsmap')
+    return is_etree_element(obj) and \
+        hasattr(obj, 'getparent') and \
+        hasattr(obj, 'nsmap') and \
+        obj.__class__.__module__ in ('lxml.etree', 'lxml.html')
+
+
+def is_etree_element_instance(obj: Any) -> bool:
+    """Strictly checks that the objects is an ElementTree or lxml.etree Element."""
+    return isinstance(obj, ElementTree.Element) or is_lxml_etree_element(obj)
 
 
 def is_etree_document(obj: Any) -> bool:
@@ -112,20 +93,35 @@ def is_etree_document(obj: Any) -> bool:
 
 
 def is_lxml_etree_document(obj: Any) -> bool:
-    return is_etree_document(obj) and hasattr(obj, 'xpath') and hasattr(obj, 'xslt')
+    return is_etree_document(obj) and \
+        hasattr(obj, 'xpath') and \
+        hasattr(obj, 'xslt') and \
+        obj.__class__.__module__ in ('lxml.etree', 'lxml.html')
+
+
+def is_etree_document_instance(obj: Any) -> bool:
+    """Strictly checks that the objects is an ElementTree or lxml.etree document."""
+    return isinstance(obj, ElementTree.ElementTree) or is_lxml_etree_document(obj)
 
 
 def etree_iter_strings(elem: Union[DocumentProtocol, ElementProtocol],
                        normalize: bool = False) -> Iterator[str]:
     e: ElementProtocol
     if normalize:
+        if hasattr(elem, 'getroot'):
+            root = cast(DocumentProtocol, elem).getroot()
+            if root is None:
+                return
+        else:
+            root = elem
+
         for e in elem.iter():
             if callable(e.tag):
                 continue
             if e.text is not None:
-                yield e.text.strip() if e is elem else e.text
-            if e.tail is not None and e is not elem:
-                yield e.tail.strip() if e in elem else e.tail
+                yield e.text.strip() if e is root else e.text
+            if e.tail is not None and e is not root:
+                yield e.tail.strip() if e in root else e.tail
     else:
         for e in elem.iter():
             if callable(e.tag):
@@ -151,7 +147,7 @@ def etree_deep_equal(e1: ElementProtocol, e2: ElementProtocol) -> bool:
 
 
 def etree_iter_paths(elem: ElementProtocol, path: str = '.') \
-        -> Iterator[Tuple[ElementProtocol, str]]:
+        -> Iterator[tuple[ElementProtocol, str]]:
 
     yield elem, path
     comment_nodes = 0
@@ -160,7 +156,7 @@ def etree_iter_paths(elem: ElementProtocol, path: str = '.') \
 
     for child in elem:
         if callable(child.tag):
-            if child.tag.__name__ == 'Comment':  # type: ignore[attr-defined]
+            if child.tag.__name__ == 'Comment':
                 comment_nodes += 1
                 yield child, f'{path}/comment()[{comment_nodes}]'
                 continue
@@ -193,28 +189,29 @@ def etree_iter_paths(elem: ElementProtocol, path: str = '.') \
         yield from etree_iter_paths(child, child_path)
 
 
-def etree_tostring(elem: ElementProtocol,
+def etree_tostring(elem: ElementType,
                    namespaces: Optional[MutableMapping[str, str]] = None,
                    indent: str = '',
                    max_lines: Optional[int] = None,
-                   spaces_for_tab: Optional[int] = None,
+                   spaces_for_tab: Optional[int] = 4,
                    xml_declaration: Optional[bool] = None,
                    encoding: str = 'unicode',
                    method: str = 'xml') -> Union[str, bytes]:
     """
-    Serialize an Element tree to a string. Tab characters are replaced by whitespaces.
+    Serialize an Element tree to a string.
 
     :param elem: the Element instance.
     :param namespaces: is an optional mapping from namespace prefix to URI. \
-    Provided namespaces are registered before serialization.
-    :param indent: the base line indentation.
+    Provided namespaces are registered before serialization. Ignored if the \
+    provided *elem* argument is a lxml Element instance.
+    :param indent: the baseline indentation.
     :param max_lines: if truncate serialization after a number of lines \
     (default: do not truncate).
-    :param spaces_for_tab: number of spaces for replacing tab characters. \
-    For default tabs are replaced with 4 spaces, but only if not empty \
-    indentation or a max lines limit are provided.
+    :param spaces_for_tab: number of spaces for replacing tab characters. For \
+    default tabs are replaced with 4 spaces, provide `None` to keep tab characters.
     :param xml_declaration: if set to `True` inserts the XML declaration at the head.
-    :param encoding: if "unicode" (the default) the output is a string, otherwise it’s binary.
+    :param encoding: if "unicode" (the default) the output is a string, \
+    otherwise it’s binary.
     :param method: is either "xml" (the default), "html" or "text".
     :return: a Unicode string.
     """
@@ -227,16 +224,14 @@ def etree_tostring(elem: ElementProtocol,
             return indent + line
 
     etree_module: Any
-    if not is_etree_element(elem):
+    if not is_etree_element_instance(elem):
         raise TypeError(f"{elem!r} is not an Element")
-    elif isinstance(elem, PyElementTree.Element):
-        etree_module = PyElementTree
     elif not hasattr(elem, 'nsmap'):
         etree_module = ElementTree
     else:
-        import lxml.etree as etree_module  # type: ignore[no-redef]
+        etree_module = importlib.import_module('lxml.etree')
 
-    if namespaces:
+    if namespaces and not hasattr(elem, 'nsmap'):
         default_namespace = namespaces.get('')
         for prefix, uri in namespaces.items():
             if prefix and not re.match(r'ns\d+$', prefix):
@@ -244,17 +239,15 @@ def etree_tostring(elem: ElementProtocol,
                 if uri == default_namespace:
                     default_namespace = None
 
-        if default_namespace and not hasattr(elem, 'nsmap'):
+        if default_namespace:
             etree_module.register_namespace('', default_namespace)
 
     xml_text = etree_module.tostring(elem, encoding=encoding, method=method)
     if isinstance(xml_text, bytes):
         xml_text = xml_text.decode('utf-8')
 
-    if spaces_for_tab:
+    if spaces_for_tab is not None:
         xml_text = xml_text.replace('\t', ' ' * spaces_for_tab)
-    elif method != 'text' and (indent or max_lines):
-        xml_text = xml_text.replace('\t', ' ' * 4)
 
     if xml_text.startswith('<?xml '):
         if xml_declaration is False:
@@ -278,9 +271,13 @@ def etree_tostring(elem: ElementProtocol,
 
     last_indent = ' ' * min(k for k in range(len(lines[-1])) if lines[-1][k] != ' ')
     if len(lines) > 2:
-        child_indent = ' ' * min(
-            k for line in lines[1:-1] for k in range(len(line)) if line[k] != ' '
-        )
+        try:
+            child_indent = ' ' * min(
+                k for line in lines[1:-1] for k in range(len(line)) if line[k] != ' '
+            )
+        except ValueError:
+            child_indent = ''
+
         min_indent = min(child_indent, last_indent)
     else:
         min_indent = child_indent = last_indent
@@ -295,7 +292,7 @@ def etree_tostring(elem: ElementProtocol,
     return '\n'.join(reindent(line) for line in lines).encode(encoding)
 
 
-__all__ = ['ElementTree', 'PyElementTree', 'SafeXMLParser', 'defuse_xml',
-           'is_etree_element', 'is_lxml_etree_element', 'is_etree_document',
-           'is_lxml_etree_document', 'etree_iter_strings', 'etree_deep_equal',
+__all__ = ['SafeExpatParser', 'defuse_xml', 'is_etree_element', 'is_lxml_etree_element',
+           'is_etree_element_instance', 'is_etree_document', 'is_lxml_etree_document',
+           'is_etree_document_instance', 'etree_iter_strings', 'etree_deep_equal',
            'etree_iter_paths', 'etree_tostring']
